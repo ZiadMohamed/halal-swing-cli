@@ -50,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
                 envelope,
                 user_tz=config.timezone.user,
                 market_tz=config.timezone.market,
+                config=config,
             )
         )
     return 0
@@ -65,7 +66,12 @@ def _parser() -> argparse.ArgumentParser:
     analyze_parser = sub.add_parser(
         "analyze",
         help="Evaluate one ticker and print a decision envelope",
-        description="Personal cash-long swing checklist. Not financial advice. Not a Shariah certification.",
+        description=(
+            "Personal cash-long swing checklist. Not financial advice. Not a Shariah certification. "
+            "Money is USD. There is no other currency and no FX conversion. "
+            "On ENTER_LONG the text says when to buy and when to sell. "
+            "You type the cash long in Interactive Brokers yourself. This CLI does not send orders."
+        ),
     )
     analyze_parser.add_argument("ticker", help="US equity ticker you have already screened (example: AAPL)")
     analyze_parser.add_argument("--json", action="store_true", help="Print the decision envelope as JSON")
@@ -81,8 +87,9 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         metavar="USD",
         help=(
-            "USD equity for this run. Overrides [account].equity_usd. "
-            "Does not change config_hash. If neither this flag nor the TOML value is set, "
+            "Account equity in USD for this run. Overrides [account].equity_usd. "
+            "Does not change config_hash. v0 does not convert other currencies. "
+            "If neither this flag nor the TOML value is set, "
             "the decision stays NO_TRADE / EQUITY_UNSET."
         ),
     )

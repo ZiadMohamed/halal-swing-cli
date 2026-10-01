@@ -32,7 +32,7 @@ src/swing/
   codes.py          decision and reason codes (Shariah codes reserved)
   guards.py         cash / long / equity product gate
   analyze.py        orchestration only
-  envelope.py       schema 1.1.0
+  envelope.py       schema 1.1.0 (`instructions` is additive; null unless ENTER_LONG)
   disclaimer.py
   paths.py          macOS Application Support, Linux fallback
   research/         LiveResearch adapter (Context or skip)
@@ -72,6 +72,8 @@ Rules:
 - `config_hash` covers policy only. It does not cover headlines, clock time, or home-directory paths.
 
 `confidence` is `checklist_only` on `ENTER_LONG` and absent otherwise. `ENTER_LONG` also requires `side="long"` and a plan.
+
+On `ENTER_LONG`, `instructions` carries `buy`, `sell`, and `currency` = `USD`. The schema version stays `1.1.0`. The text view prints those steps. `--compact` prints a shorter form. Prices are USD. There is no FX conversion. The CLI does not send the order: you type the cash long in Interactive Brokers. `IbkrBrokerStub` still raises.
 
 ## Config
 

@@ -6,7 +6,10 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from swing.codes import DecisionKind
+from swing.config import SwingConfig
 from swing.envelope import Envelope, Plan
+from swing.output.instructions import build_instructions, compact_buy, compact_sell
 
 _DEFAULT_USER_TZ = "Africa/Cairo"
 _DEFAULT_MARKET_TZ = "America/New_York"
@@ -22,6 +25,7 @@ def render_text(
     *,
     user_tz: str = _DEFAULT_USER_TZ,
     market_tz: str = _DEFAULT_MARKET_TZ,
+    config: SwingConfig | None = None,
 ) -> str:
     """Print the decision. News text is not copied onto the plan numbers."""
     lines = [
@@ -40,7 +44,8 @@ def render_text(
     if envelope.plan is not None:
         lines.append(_plan_line(envelope.plan))
     elif envelope.equity_usd is not None:
-        lines.append(f"equity_usd {json.dumps(envelope.equity_usd)}")
+        lines.append(f"equity_usd {json.dumps(envelope.equity_usd)} USD")
+    lines.extend(_action_lines(envelope, config))
     lines.extend(_clock_lines(envelope, user_tz=user_tz, market_tz=market_tz))
     lines.append(_stage_line(envelope))
     lines.extend(_gate_lines(envelope))
@@ -52,10 +57,10 @@ def _plan_line(plan: Plan) -> str:
     setup = plan.setup if plan.setup is not None else "none"
     return (
         f"plan setup={setup} "
-        f"entry={json.dumps(plan.entry)} "
-        f"stop={json.dumps(plan.stop)} "
-        f"target={json.dumps(plan.target)} "
-        f"size={plan.size_shares} "
+        f"entry={json.dumps(plan.entry)} USD "
+        f"stop={json.dumps(plan.stop)} USD "
+        f"target={json.dumps(plan.target)} USD "
+        f"size={plan.size_shares} shares "
         f"{_equity_token(plan.equity_usd)}"
         f"next_open={plan.next_open}"
     )
@@ -64,7 +69,25 @@ def _plan_line(plan: Plan) -> str:
 def _equity_token(equity_usd: float | None) -> str:
     if equity_usd is None:
         return ""
-    return f"equity={json.dumps(equity_usd)} "
+    return f"equity={json.dumps(equity_usd)} USD "
+
+
+def _action_lines(envelope: Envelope, config: SwingConfig | None) -> list[str]:
+    """Buy and sell steps for ENTER_LONG. Other decisions stay quiet."""
+    if envelope.decision is not DecisionKind.ENTER_LONG or envelope.plan is None:
+        return []
+    policy = config or SwingConfig()
+    if envelope.compact:
+        return [
+            compact_buy(envelope.ticker, envelope.plan),
+            compact_sell(envelope.plan, policy.stops.reward_r),
+        ]
+    built = envelope.instructions or build_instructions(
+        ticker=envelope.ticker,
+        plan=envelope.plan,
+        config=policy,
+    )
+    return [built.buy, built.sell]
 
 
 def _stage_line(envelope: Envelope) -> str:

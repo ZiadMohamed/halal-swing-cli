@@ -95,7 +95,7 @@ class DividendEvent:
     ticker: str
     ex_date: date
     amount: float
-    currency: str
+    currency: str  # vendor label only; plan money is USD and v0 does not convert
     pay_date: date | None = None
     frequency: str | None = None
 

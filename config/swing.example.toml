@@ -14,8 +14,10 @@ max_concurrent_positions = 4
 [account]
 mode = "cash"
 longs_only = true
-# Set cash equity before sizing. Unset refuses the trade instead of guessing.
+# Set cash equity in USD before sizing. Unset refuses the trade instead of guessing.
+# v0 does not convert other currencies.
 # A single run can pass --equity USD instead. That override does not change config_hash.
+# The CLI prints the plan. Type the cash long in Interactive Brokers. It does not send orders.
 # equity_usd = 100000
 
 [risk]

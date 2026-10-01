@@ -30,6 +30,7 @@ from swing.envelope import (
     ShariahView,
 )
 from swing.guards import product_block
+from swing.output.instructions import build_instructions
 from swing.research.factory import build_live_research
 from swing.research.models import ResearchResult
 
@@ -230,6 +231,12 @@ def _data_view(market: MarketData | None) -> DataView:
     )
 
 
+def _instructions(decision: DecisionKind, ticker: str, plan: Plan | None, config: SwingConfig):
+    if decision is not DecisionKind.ENTER_LONG or plan is None:
+        return None
+    return build_instructions(ticker=ticker, plan=plan, config=config)
+
+
 def _skipped(reason: str) -> ResearchResult:
     return ResearchResult(status="skipped", provider="none", reason=reason, query=None, hits=())
 
@@ -270,6 +277,7 @@ def _envelope(
             affects_checklist_math=False,
         ),
         data=_data_view(market),
+        instructions=_instructions(decision, ticker, plan, config),
         disclaimer=DISCLAIMER,
         config_hash=config.config_hash(),
         compact=compact,

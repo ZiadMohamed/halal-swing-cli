@@ -47,9 +47,23 @@ Linux is a fallback for CI and agents only. On Linux the data root is `$XDG_DATA
 
 ## What analyze prints
 
-`swing analyze AAPL` prints one envelope. `--equity USD` sets the account equity for that invocation and wins over `[account].equity_usd`. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, size, next open), each gate name and status, and the disclaimer. `--compact` is off unless you pass it; the compact view is shorter and still includes those fields and the disclaimer. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
+`swing analyze AAPL` prints one envelope. Money is USD. `--equity USD` sets the account equity in USD for that invocation and wins over `[account].equity_usd`. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, and size, each price in USD), each gate name and status, and the disclaimer. On `ENTER_LONG` it also says when to buy and when to sell. `--compact` is off unless you pass it; the compact view is shorter (`Buy:` / `Sell:`) and still includes the plan, the clocks, and the disclaimer. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `instructions` is an additive object on that same schema (`buy`, `sell`, and `currency` = `USD`). It is null unless the decision is `ENTER_LONG`. The schema version is unchanged. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
 
 Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, a missing config path, or a journal line that is not valid JSON.
+
+## How to use the plan (manual IBKR)
+
+Money in this checklist is USD. Equity, the planned entry, the stop, the target, and the account figure used for size are USD. There is no other currency and no FX conversion. A dividend `currency` value is the vendor's label for that cash amount. v0 does not convert it, and it is not a currency setting.
+
+The CLI plans a cash long. It does not send the order. When the decision is `ENTER_LONG`, you type the order in Interactive Brokers yourself, in a cash account, long shares only. `IbkrBrokerStub` still raises. Live orders are out of scope.
+
+Not financial advice. The lines are a checklist helper. `confidence` stays `checklist_only`. That stamp means the predetermined rules matched. It is not a claim of edge.
+
+**When to buy.** The mutex winner is named (`BO_RVOL`, then `PB_EMA`, then `RSI2_MR`) and the line says what that signal means. With the locked defaults, BO is a close above SMA(50), above the prior 20-session high, and volume at least 1.5 times the prior 20-session average (today excluded). PB is a close above EMA(50), a low that tags EMA(20), and a close back above that EMA. RSI2 is a close above SMA(200) and RSI(2) strictly below 10. If your TOML changes a period, the sentence uses that period. The fill is intended at the next NYSE open. The planned entry is the signal close, in USD, because the opening print has not happened. The share count is the 1% size. Cash long only. You type that order in Interactive Brokers. This CLI does not send it.
+
+**When to sell.** v0 exits at the stop or the 2R target, both in USD. The stop is entry minus ATR(14) times 1.5. The target is 2R using that same risk. BO_RVOL and PB_EMA use that stop and that 2R target. RSI2_MR uses the same stop and 2R target. RSI2_MR's SMA(200) is the entry trend filter, not an exit. An SMA(5) exit is not locked in v0. Time-stops are not in v0. You type the exit in Interactive Brokers yourself. This CLI does not send it.
+
+`--compact` prints a shorter Buy and Sell form of those same steps: setup, share count, cash long, next NYSE open, entry in USD, stop, 2R target, and the note that time-stops are not in v0.
 
 ## Paper journal
 
@@ -107,7 +121,7 @@ Prefs 1–12 are the built-in config. Details and the hash rule are in [docs/arc
 - SPY R² at or above 0.70 over 60 sessions warns only
 - Earnings blackout is strict (T−2 through T+1). Ordinary ex-div warns. A distribution at or above 1% of price still blocks
 - Bars: yfinance prototype or Massive. Events: Finnhub
-- Paper JSONL journal of planned entries. No live broker
+- Paper JSONL journal of planned entries. You type cash longs in Interactive Brokers. The CLI does not send orders
 
 `config/swing.example.toml` matches those defaults. The hash of a run is SHA-256 of the canonical config JSON, so a policy edit is visible on the envelope.
 
@@ -121,4 +135,4 @@ uv run pytest
 
 Architecture and the decision to stay on Python + uv: [docs/architecture.md](docs/architecture.md), [docs/adr/0001-python-uv-and-boundaries.md](docs/adr/0001-python-uv-and-boundaries.md).
 
-v0 is complete for cash longs once equity is set. Later choices (a bars bake-off, Massive when the free limit hurts, optional IBKR) are noted in [HANDOVER.md](HANDOVER.md).
+v0 is complete for cash longs once equity is set. You place the planned cash long yourself in Interactive Brokers. Later choices (a bars bake-off, Massive when the free limit hurts) are noted in [HANDOVER.md](HANDOVER.md).

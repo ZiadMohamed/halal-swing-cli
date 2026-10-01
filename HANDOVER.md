@@ -51,7 +51,7 @@ These are choices, not a scheduled build.
 - **Equity.** The number has to be yours. The example file leaves it commented out on purpose.
 - **Bars bake-off.** yfinance is the default and is an unofficial prototype. Massive Basic is already implemented (`SWING_BARS_PROVIDER=massive` plus `MASSIVE_API_KEY`). Switch when the yfinance series is the thing you no longer trust, not before.
 - **Massive limits.** Basic daily aggregates are about two years. Paying for Starter is a billing choice. It is not a code default.
-- **Optional IBKR.** Live orders stay out until you ask. The stub must keep raising until that version exists.
+- **Manual IBKR.** You type the cash long in Interactive Brokers yourself. The CLI plans the trade and does not send it. `IbkrBrokerStub.place_order` keeps raising. Live orders stay out.
 - **A shrinking book.** v0 treats every journaled plan as still open. Closing a name would be a new append-only record in a later version, not a rewrite of this file.
 
 ## Still true

@@ -1,4 +1,8 @@
-"""Decision envelope schema 1.1.0."""
+"""Decision envelope schema 1.1.0.
+
+`instructions` is additive and null unless the decision is ENTER_LONG.
+The schema version stays 1.1.0.
+"""
 
 from __future__ import annotations
 
@@ -34,6 +38,14 @@ class Plan(_Strict):
     equity_usd: float | None = Field(default=None, ge=0)
 
 
+class Instructions(_Strict):
+    """Checklist steps for one planned cash long. Not advice. USD only."""
+
+    currency: Literal["USD"] = "USD"
+    buy: str
+    sell: str
+
+
 class ShariahView(_Strict):
     screened: Literal[False] = False
     provider: str | None = None
@@ -65,11 +77,17 @@ class EarningsBrief(_Strict):
 
 
 class DividendBrief(_Strict):
-    """Ex-dividend cash amount per share. Chat 3 compares it with price."""
+    """Ex-dividend cash amount per share. The checklist compares it with price.
+
+    `currency` is the vendor's label for that cash amount. It is not a currency
+    setting. Plan prices are USD. v0 does not convert this amount.
+    """
 
     ex_date: str
     amount: float
-    currency: str
+    currency: str = Field(
+        description="Vendor label for the cash amount. Not a currency setting. Plan money is USD."
+    )
 
 
 class DataView(_Strict):
@@ -99,6 +117,7 @@ class Envelope(_Strict):
     confidence: Literal["checklist_only"] | None
     side: Literal["long"] | None
     plan: Plan | None
+    instructions: Instructions | None = None
     equity_usd: float | None = Field(default=None, ge=0)
     shariah: ShariahView
     research: ResearchView
@@ -120,4 +139,6 @@ class Envelope(_Strict):
                 raise ValueError("ENTER_LONG requires a plan")
         elif self.confidence is not None:
             raise ValueError("confidence is only stamped on ENTER_LONG")
+        if self.decision is not DecisionKind.ENTER_LONG and self.instructions is not None:
+            raise ValueError("instructions are only stamped on ENTER_LONG")
         return self
