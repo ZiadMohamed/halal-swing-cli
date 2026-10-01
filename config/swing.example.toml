@@ -1,0 +1,81 @@
+# Locked defaults for the personal swing checklist.
+# Not financial advice. Not a Shariah certification.
+#
+# macOS: copy to ~/Library/Application Support/swing/config.toml
+# or pass: swing analyze TICKER --config /path/to/swing.toml
+# A repo-root swing.toml is also read and is gitignored.
+# This example is not loaded unless you point the CLI at it.
+#
+# Time-stops are intentionally absent. They were not locked.
+
+schema_version = "1"
+max_concurrent_positions = 4
+
+[account]
+mode = "cash"
+longs_only = true
+
+[risk]
+per_trade = 0.01
+
+[heat]
+total_max = 0.06
+sector_max = 0.03
+
+[setups]
+mutex_order = ["BO_RVOL", "PB_EMA", "RSI2_MR"]
+
+[setups.bo_rvol]
+rvol_min = 1.5
+breakout_lookback = 20
+sma_period = 50
+
+[setups.pb_ema]
+ema_trend = 50
+ema_touch = 20
+
+[setups.rsi2_mr]
+rsi_period = 2
+rsi_max = 10
+sma_trend = 200
+
+[stops]
+atr_period = 14
+atr_multiple = 1.5
+reward_r = 2.0
+
+[spy_r2]
+threshold = 0.70
+lookback_days = 60
+effect = "warn"
+
+[earnings]
+strict = true
+blackout_before_days = 2
+blackout_after_days = 1
+
+[exdiv]
+strict = false
+block_yield_gte = 0.01
+
+[output]
+compact = false
+
+[data]
+bars_provider = "yfinance"
+events_provider = "finnhub"
+
+[research]
+provider = "context"
+enabled = true
+affects_checklist_math = false
+
+[journal]
+mode = "paper_jsonl"
+
+[shariah]
+screen_in_v0 = false
+
+[timezone]
+user = "Africa/Cairo"
+market = "America/New_York"
