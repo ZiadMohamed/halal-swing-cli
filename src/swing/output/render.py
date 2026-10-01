@@ -39,6 +39,8 @@ def render_text(
         lines.append(f"data: {envelope.data.status} bars={envelope.data.bar_count} {suspect}")
     if envelope.plan is not None:
         lines.append(_plan_line(envelope.plan))
+    elif envelope.equity_usd is not None:
+        lines.append(f"equity_usd {json.dumps(envelope.equity_usd)}")
     lines.extend(_clock_lines(envelope, user_tz=user_tz, market_tz=market_tz))
     lines.append(_stage_line(envelope))
     lines.extend(_gate_lines(envelope))
@@ -54,8 +56,15 @@ def _plan_line(plan: Plan) -> str:
         f"stop={json.dumps(plan.stop)} "
         f"target={json.dumps(plan.target)} "
         f"size={plan.size_shares} "
+        f"{_equity_token(plan.equity_usd)}"
         f"next_open={plan.next_open}"
     )
+
+
+def _equity_token(equity_usd: float | None) -> str:
+    if equity_usd is None:
+        return ""
+    return f"equity={json.dumps(equity_usd)} "
 
 
 def _stage_line(envelope: Envelope) -> str:

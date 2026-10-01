@@ -14,15 +14,18 @@ uv sync
 uv run swing analyze --help
 ```
 
-Copy `config/swing.example.toml` to `~/Library/Application Support/swing/config.toml` (or `./swing.toml`, which is gitignored) and set equity. Sizing refuses the trade while `account.equity_usd` is unset. No equity figure is invented.
+Copy `config/swing.example.toml` to `~/Library/Application Support/swing/config.toml` (or `./swing.toml`, which is gitignored) and set equity. Sizing refuses the trade while `account.equity_usd` is unset and `--equity` was not passed. No equity figure is invented.
 
 ```toml
 [account]
 equity_usd = 100000
 ```
 
+`--equity USD` wins over the TOML value for that invocation. Sizing, the 1% heat add, and the journal `risk_fraction` use that equity. `config_hash` stays the hash of the file. The envelope and plan stamp `equity_usd`.
+
 ```bash
 uv run swing analyze AAPL
+uv run swing analyze AAPL --equity 10000
 uv run swing analyze AAPL --sector Technology
 uv run swing analyze AAPL --json
 ```
@@ -35,7 +38,7 @@ Path: `~/Library/Application Support/swing/journal.jsonl`. `SWING_DATA_DIR` over
 
 One JSON object per line. Append only when the decision is `ENTER_LONG`, after the envelope exists, from the CLI. The renderer does not touch the file. `NO_TRADE` and `BLOCK` write nothing. A second `ENTER_LONG` appends a second line. Lines are never rewritten or deleted.
 
-`size_shares` is copied from the plan. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`. Sector is stored when `--sector` was passed. Blank sectors are not one bucket. A line that is not JSON, or that has no `risk_fraction`, stops the command (exit 2) so heat is not computed from a partial book.
+`size_shares` is copied from the plan. `risk_fraction` is `size_shares * (entry - stop) / equity_usd` for the equity that sized that plan. Sector is stored when `--sector` was passed. Blank sectors are not one bucket. A line that is not JSON, or that has no `risk_fraction`, stops the command (exit 2) so heat is not computed from a partial book.
 
 `config_hash` is unchanged. The journal is not a `SwingConfig` field.
 

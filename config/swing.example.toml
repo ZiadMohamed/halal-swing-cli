@@ -15,6 +15,7 @@ max_concurrent_positions = 4
 mode = "cash"
 longs_only = true
 # Set cash equity before sizing. Unset refuses the trade instead of guessing.
+# A single run can pass --equity USD instead. That override does not change config_hash.
 # equity_usd = 100000
 
 [risk]

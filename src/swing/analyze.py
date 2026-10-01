@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import math
 import re
 from collections.abc import Mapping
 from typing import Literal
@@ -61,9 +62,17 @@ def analyze(
     spy_bars: BarSeries | None = None,
     positions: tuple[OpenPosition, ...] = (),
     sector: str | None = None,
+    equity_usd: float | None = None,
 ) -> Envelope:
+    """Run one checklist pass.
+
+    `equity_usd` overrides `account.equity_usd` for sizing on this call. The
+    override is copied onto the config the brain reads and stamped on the
+    envelope. The caller's config object, and its `config_hash`, stay as loaded.
+    """
     symbol = normalize_ticker(ticker)
     cfg = config if config is not None else load_config(env=env if env is not None else None)
+    run_cfg, effective_equity = _equity_for_run(cfg, equity_usd)
     block = product_block(
         side="long",
         instrument="equity",
@@ -84,6 +93,7 @@ def analyze(
             ),
             warnings=(),
             research=_skipped("not_run_product_block"),
+            equity_usd=effective_equity,
         )
     if market is None and fetch_market:
         market = load_market_data(symbol, cfg, env=env)
@@ -97,7 +107,7 @@ def analyze(
             )
             if spy_market is not None and spy_market.bars is not None and not spy_market.bars.corp_action_suspect:
                 spy_bars = spy_market.bars
-    checklist = _evaluate(brain or ChecklistBrain(), symbol, cfg, market, spy_bars, positions, sector)
+    checklist = _evaluate(brain or ChecklistBrain(), symbol, run_cfg, market, spy_bars, positions, sector)
     if research_result is None:
         research_result = build_live_research(cfg, env=env).enrich(symbol)
     warnings = list(checklist.warnings)
@@ -113,9 +123,38 @@ def analyze(
         gates=checklist.gates,
         confidence=checklist.confidence,
         side=checklist.side,
-        plan=checklist.plan,
+        plan=_stamp_plan_equity(checklist.plan, effective_equity),
         market=market,
+        equity_usd=effective_equity,
     )
+
+
+def _equity_for_run(config: SwingConfig, equity_usd: float | None) -> tuple[SwingConfig, float | None]:
+    """Return the config the brain should read, and the equity to stamp.
+
+    `None` keeps the loaded account equity. A number replaces it on a copy so
+    the file hash is unchanged.
+    """
+    if equity_usd is None:
+        return config, config.account.equity_usd
+    equity = _finite_equity(equity_usd)
+    account = config.account.model_copy(update={"equity_usd": equity})
+    return config.model_copy(update={"account": account}), equity
+
+
+def _finite_equity(equity_usd: float) -> float:
+    if isinstance(equity_usd, bool) or not isinstance(equity_usd, (int, float)):
+        raise ValueError("equity must be a non-negative finite number of USD. No equity figure was invented.")
+    equity = float(equity_usd)
+    if not math.isfinite(equity) or equity < 0:
+        raise ValueError("equity must be a non-negative finite number of USD. No equity figure was invented.")
+    return equity
+
+
+def _stamp_plan_equity(plan: Plan | None, equity_usd: float | None) -> Plan | None:
+    if plan is None or plan.equity_usd == equity_usd:
+        return plan
+    return plan.model_copy(update={"equity_usd": equity_usd})
 
 
 def _evaluate(
@@ -209,6 +248,7 @@ def _envelope(
     side: Literal["long"] | None = None,
     plan: Plan | None = None,
     market: MarketData | None = None,
+    equity_usd: float | None = None,
 ) -> Envelope:
     return Envelope(
         ticker=ticker,
@@ -218,6 +258,7 @@ def _envelope(
         confidence=confidence,
         side=side,
         plan=plan,
+        equity_usd=equity_usd,
         shariah=ShariahView(screened=False, provider=None, status="user_supplied", note=SHARIAH_NOTE),
         research=ResearchView(
             status=research.status,

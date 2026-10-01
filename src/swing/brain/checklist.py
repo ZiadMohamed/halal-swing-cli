@@ -200,6 +200,7 @@ class ChecklistBrain:
             size_shares=shares,
             next_open=market.next_open,
             setup=winner,  # type: ignore[arg-type]
+            equity_usd=config.account.equity_usd,
         )
         return finish(DecisionKind.ENTER_LONG, plan=plan)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import sys
 from pathlib import Path
 
@@ -35,8 +36,9 @@ def main(argv: list[str] | None = None) -> int:
             fetch_market=True,
             positions=journal.load_positions(),
             sector=sector,
+            equity_usd=args.equity,
         )
-        journal.append(envelope, equity_usd=config.account.equity_usd, sector=sector)
+        journal.append(envelope, equity_usd=envelope.equity_usd, sector=sector)
     except (ValueError, ValidationError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -74,12 +76,37 @@ def _parser() -> argparse.ArgumentParser:
     )
     analyze_parser.add_argument("--config", type=Path, help="TOML config file. Overrides discovery.")
     analyze_parser.add_argument(
+        "--equity",
+        type=_usd_equity,
+        default=None,
+        metavar="USD",
+        help=(
+            "USD equity for this run. Overrides [account].equity_usd. "
+            "Does not change config_hash. If neither this flag nor the TOML value is set, "
+            "the decision stays NO_TRADE / EQUITY_UNSET."
+        ),
+    )
+    analyze_parser.add_argument(
         "--sector",
         default=None,
         help="Sector label for this ticker. Used for the 3%% sector heat cap. Omit it and sector heat is not applied.",
     )
     analyze_parser.add_argument("--verbose", action="store_true", help="Log to stderr. Stdout stays clean for --json.")
     return parser
+
+
+def _usd_equity(value: str) -> float:
+    try:
+        equity = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "equity must be a non-negative finite number of USD. No equity figure was invented."
+        ) from exc
+    if not math.isfinite(equity) or equity < 0:
+        raise argparse.ArgumentTypeError(
+            "equity must be a non-negative finite number of USD. No equity figure was invented."
+        )
+    return equity
 
 
 def _sector(value: str | None) -> str | None:

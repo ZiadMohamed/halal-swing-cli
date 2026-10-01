@@ -8,7 +8,7 @@ Cash account, long equity only. No shorts, no conventional margin, no options, C
 
 An `ENTER_LONG` stamps `confidence: "checklist_only"`. That means the predetermined rules matched. It is not a claim of edge.
 
-`swing analyze` runs the checklist brain. A match can print `ENTER_LONG` with entry, stop, target, size, and the next NYSE open. Anything else stays `NO_TRADE` or `BLOCK`, with the disclaimer and config hash on every envelope. Set `account.equity_usd` or size is refused. Each planned `ENTER_LONG` is appended to the paper journal, and the next run counts that open risk toward the 6% heat cap, the 3% sector cap, and the four-position limit.
+`swing analyze` runs the checklist brain. A match can print `ENTER_LONG` with entry, stop, target, size, and the next NYSE open. Anything else stays `NO_TRADE` or `BLOCK`, with the disclaimer and config hash on every envelope. Size uses `[account].equity_usd`, or `--equity` for that one run. With neither set, the decision is `NO_TRADE` / `EQUITY_UNSET`. Each planned `ENTER_LONG` is appended to the paper journal, and the next run counts that open risk toward the 6% heat cap, the 3% sector cap, and the four-position limit.
 
 ## macOS setup
 
@@ -26,6 +26,7 @@ uv run swing analyze --help
 uv run swing analyze AAPL
 uv run swing analyze AAPL --json
 uv run swing analyze AAPL --sector Technology
+uv run swing analyze AAPL --equity 10000
 ```
 
 `uv sync` creates `.venv` and installs the locked dependencies from `uv.lock`. You do not need a system Python beyond what uv downloads (3.12).
@@ -46,7 +47,7 @@ Linux is a fallback for CI and agents only. On Linux the data root is `$XDG_DATA
 
 ## What analyze prints
 
-`swing analyze AAPL` prints one envelope. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, size, next open), each gate name and status, and the disclaimer. `--compact` is off unless you pass it; the compact view is shorter and still includes those fields and the disclaimer. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
+`swing analyze AAPL` prints one envelope. `--equity USD` sets the account equity for that invocation and wins over `[account].equity_usd`. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, size, next open), each gate name and status, and the disclaimer. `--compact` is off unless you pass it; the compact view is shorter and still includes those fields and the disclaimer. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
 
 Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, a missing config path, or a journal line that is not valid JSON.
 
@@ -54,7 +55,7 @@ Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit 
 
 On macOS the file is `~/Library/Application Support/swing/journal.jsonl`. `SWING_DATA_DIR` overrides that root. The CLI creates the file on the first planned entry. `NO_TRADE` and `BLOCK` do not write a line and do not rewrite earlier ones.
 
-A line is one JSON object. `size_shares` is copied from the plan. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`, using the equity in config. If equity is unset, nothing is invented and nothing is journaled.
+A line is one JSON object. `size_shares` is copied from the plan. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`, using the equity that sized that plan (`--equity` when you pass it, otherwise `[account].equity_usd`). If equity is unset, nothing is invented and nothing is journaled.
 
 Every line stays open risk. v0 does not delete or rewrite lines, so the book only grows. Four open plans block the next entry (`MAX_POSITIONS`). Prior risk plus 1% of equity above 6% blocks with `HEAT_LIMIT`.
 
@@ -66,6 +67,14 @@ Put equity in the TOML you actually load (`--config`, `./swing.toml`, or `~/Libr
 [account]
 equity_usd = 100000
 ```
+
+For one invocation, pass the dollars on the command line. `--equity` wins over the TOML value for that run. It drives the same 1% size and the same heat check. The file is left as it is, and `config_hash` stays the hash of that file. The envelope and the plan record the equity that was used (`equity_usd`).
+
+```bash
+uv run swing analyze AAPL --equity 10000
+```
+
+With neither `--equity` nor `[account].equity_usd` set, the decision is `NO_TRADE` and the reason is `EQUITY_UNSET`. No equity figure is invented.
 
 `config/swing.example.toml` shows the locked defaults. The example leaves equity commented out so a fresh hash still matches the built-in config.
 

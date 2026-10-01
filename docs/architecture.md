@@ -111,7 +111,7 @@ Locked policy (prefs 1–12):
 
 Frozen checklist parameters from the algorithm pack (not a new claim of edge): ATR(14) × 1.5 stop, target 2R, BO RVOL ≥ 1.5 versus 20-day volume SMA excluding today, close above SMA(50), PB EMA 20/50, RSI2 trend SMA(200). Time-stops (research sketch 5/15/20 sessions) are **not** in config. They were not re-locked.
 
-`account.equity_usd` stays unset until Ziad writes it. Sizing cannot run without it. Chat 3 owns that check.
+`account.equity_usd` stays unset until Ziad writes it. Sizing cannot run without it. `swing analyze --equity USD` overrides that value for one run, sizes and journals from the override, and leaves `config_hash` as the hash of the file. The envelope stamps the equity that was used. With neither the flag nor the TOML value set, the decision is `NO_TRADE` / `EQUITY_UNSET`.
 
 ## Decision codes
 

@@ -31,6 +31,7 @@ class Plan(_Strict):
     size_shares: int = Field(ge=0)
     next_open: str
     setup: Literal["BO_RVOL", "PB_EMA", "RSI2_MR"] | None = None
+    equity_usd: float | None = Field(default=None, ge=0)
 
 
 class ShariahView(_Strict):
@@ -98,6 +99,7 @@ class Envelope(_Strict):
     confidence: Literal["checklist_only"] | None
     side: Literal["long"] | None
     plan: Plan | None
+    equity_usd: float | None = Field(default=None, ge=0)
     shariah: ShariahView
     research: ResearchView
     data: DataView = Field(default_factory=DataView)
