@@ -13,8 +13,9 @@ from swing.disclaimer import DISCLAIMER
 
 
 @pytest.fixture(autouse=True)
-def _offline_market(monkeypatch):
-    """CLI tests must not call yfinance or Finnhub."""
+def _offline_market(tmp_path, monkeypatch):
+    """CLI tests must not call yfinance or Finnhub, or read a home-directory journal."""
+    monkeypatch.setenv("SWING_DATA_DIR", str(tmp_path / "swing-data"))
     monkeypatch.setattr("swing.analyze.load_market_data", lambda *args, **kwargs: None)
 
 
@@ -29,6 +30,7 @@ def test_analyze_help_exits_zero(capsys):
     assert "Not financial advice" in out
     assert "--compact" in out
     assert "--json" in out
+    assert "--sector" in out
 
 
 def test_json_stub_is_parseable_and_compact_defaults_off(capsys, monkeypatch):

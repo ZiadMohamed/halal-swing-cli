@@ -1,9 +1,16 @@
 """Cash, long equity only. Shariah codes stay unused on the v0 path."""
 
+from pathlib import Path
+
+import pytest
+
+from swing.analyze import analyze
 from swing.broker.ibkr import IbkrBrokerStub
 from swing.codes import SHARIAH_REASON_CODES, DecisionKind, ReasonCode
+from swing.config import SwingConfig
 from swing.guards import product_block
 from swing.journal.paper import PaperJournal
+from swing.research.models import ResearchResult
 
 
 def test_there_is_no_enter_short_decision():
@@ -30,24 +37,21 @@ def test_shariah_codes_are_reserved_on_the_enum():
 
 
 def test_ibkr_stub_does_not_trade():
-    with pytest_raises_not_implemented():
+    with pytest.raises(NotImplementedError) as caught:
         IbkrBrokerStub().place_order(object())
+    text = str(caught.value).lower()
+    assert "live trading" in text
+    assert "out of scope" in text
 
 
-def test_paper_journal_is_not_wired_yet():
-    with pytest_raises_not_implemented():
-        PaperJournal().append(object())
-
-
-class pytest_raises_not_implemented:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        if exc_type is None:
-            raise AssertionError("expected NotImplementedError")
-        if not issubclass(exc_type, NotImplementedError):
-            return False
-        text = str(exc).lower()
-        assert "v0" in text or "out of scope" in text or "not installed" in text or "hardening" in text
-        return True
+def test_paper_journal_append_records_plans_instead_of_raising(tmp_path: Path):
+    envelope = analyze(
+        "AAPL",
+        config=SwingConfig(),
+        env={},
+        fetch_market=False,
+        research_result=ResearchResult(status="skipped", provider="none", reason="disabled", query=None, hits=()),
+    )
+    assert envelope.decision is DecisionKind.NO_TRADE
+    PaperJournal(tmp_path / "journal.jsonl").append(envelope, equity_usd=None)
+    assert not (tmp_path / "journal.jsonl").exists()

@@ -1,4 +1,4 @@
-"""Open risk the heat gate reads. The paper journal does not fill this yet."""
+"""Open risk the heat gate reads. The CLI loads this from the paper journal."""
 
 from __future__ import annotations
 

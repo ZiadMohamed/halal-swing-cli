@@ -47,5 +47,5 @@ def journal_path(
     home: Path | None = None,
     env: Mapping[str, str] | None = None,
 ) -> Path:
-    """JSONL path for Chat 5. The file is not created here."""
+    """Paper JSONL path. This helper does not create the file."""
     return default_data_dir(platform=platform, home=home, env=env) / "journal.jsonl"

@@ -39,7 +39,7 @@ src/swing/
   data/ports.py     BarProvider, EventProvider, CalendarProvider
   brain/            gate order + ChecklistBrain
   output/render.py  text and JSON
-  journal/paper.py  JSONL stub (Chat 5)
+  journal/paper.py  append-only paper JSONL
   broker/ibkr.py    IBKR stub, no network
 ```
 
@@ -48,14 +48,16 @@ src/swing/
 ```
 argv
   → load SwingConfig (defaults, optional TOML, SWING_BARS_PROVIDER)
+  → load open risk from journal.jsonl (missing file = empty book)
   → product guard (short / margin / derivative)
-  → ChecklistBrain.evaluate(ticker, config, market)  # no research object
+  → ChecklistBrain.evaluate(ticker, config, market, positions, sector)
   → LiveResearch.enrich(ticker)                    # fail-soft
   → Envelope (checklist fields + data summary + advisory research)
+  → append one JSONL line when the decision is ENTER_LONG
   → stdout
 ```
 
-Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage or an unknown ticker. A missing API key is exit `0` with `WARN_RESEARCH_UNAVAILABLE`.
+Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, an unknown ticker, or a journal line that cannot be read. A missing API key is exit `0` with `WARN_RESEARCH_UNAVAILABLE`.
 
 ## Determinism boundary
 
@@ -166,7 +168,7 @@ Data and config root on macOS:
 
 - `config.toml` optional
 - `cache/bars/` Parquet (Chat 2)
-- `journal.jsonl` (Chat 5)
+- `journal.jsonl` append-only planned `ENTER_LONG` lines
 
 `SWING_DATA_DIR` overrides the root. On Linux (CI, this agent) the fallback is `$XDG_DATA_HOME/swing` or `~/.local/share/swing`. That fallback is not the product target.
 
@@ -174,11 +176,11 @@ Data and config root on macOS:
 
 **Chat 2 — Data.** Done. `load_market_data` returns `MarketData`: split-adjusted bars (yfinance or Massive), a `corp_action_suspect` flag, Finnhub earnings and dividend events, and `next_open` from the NYSE calendar. Parquet lives under `bars_cache_dir()`. The analyze envelope copies a summary onto `data`. Finnhub does not serve OHLC.
 
-**Chat 3 — Brain.** Done. `ChecklistBrain` walks `PIPELINE_GATES` in order. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. High SPY R² is `WARN_SPY_R2` only. Earnings strict blackout is `NO_TRADE`. `confidence` is `checklist_only` on enter. Research is not an argument. The CLI still assumes an empty open book until Chat 5 passes positions.
+**Chat 3 — Brain.** Done. `ChecklistBrain` walks `PIPELINE_GATES` in order. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. High SPY R² is `WARN_SPY_R2` only. Earnings strict blackout is `NO_TRADE`. `confidence` is `checklist_only` on enter. Research is not an argument.
 
-**Chat 4 — Output.** Done. `render_text` shows the decision, reason and warning codes, the plan when present, gate name and status, and the disclaimer on the full view and on `--compact`. `next_open` is printed in `America/New_York` and in `timezone.user` (default `Africa/Cairo`), the same instant. `--compact` stays default off. `--json` is one document and still carries `config_hash`, `shariah.screened=false`, and `research.affects_checklist_math=false`. A headline does not change plan numbers. See `HANDOVER.md` for what Chat 5 should journal.
+**Chat 4 — Output.** Done. `render_text` shows the decision, reason and warning codes, the plan when present, gate name and status, and the disclaimer on the full view and on `--compact`. `next_open` is printed in `America/New_York` and in `timezone.user` (default `Africa/Cairo`), the same instant. `--compact` stays default off. `--json` is one document and still carries `config_hash`, `shariah.screened=false`, and `research.affects_checklist_math=false`. A headline does not change plan numbers. The renderer does not read or write the journal.
 
-**Chat 5 — Hardening.** Synthetic fixtures, acceptance tests, append-only paper JSONL at `journal_path()`. Pass the open book into `analyze`. Leave `IbkrBrokerStub` raising. No live broker until Ziad asks in a later version.
+**Chat 5 — Hardening.** Done. `PaperJournal` appends one JSON object per planned `ENTER_LONG` at `journal_path()` and never rewrites earlier lines. The CLI loads that book into `analyze` before the checklist, so heat `0.06`, sector heat `0.03` (only with `--sector` or a stored sector), and `max_concurrent_positions` `4` see prior plans. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`. No `SwingConfig` field was added, so `config_hash` is unchanged. `IbkrBrokerStub` still raises. See `HANDOVER.md` for what v0 does not do yet.
 
 ## Out of v0
 

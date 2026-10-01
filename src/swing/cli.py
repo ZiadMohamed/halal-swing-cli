@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from swing import __version__
 from swing.analyze import analyze
 from swing.config import load_config
+from swing.journal.paper import PaperJournal
 from swing.output.render import render_json, render_text
 
 
@@ -25,7 +26,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = load_config(path=args.config)
         compact = bool(args.compact or config.output.compact)
-        envelope = analyze(args.ticker, config=config, compact=compact, fetch_market=True)
+        journal = PaperJournal()
+        sector = _sector(args.sector)
+        envelope = analyze(
+            args.ticker,
+            config=config,
+            compact=compact,
+            fetch_market=True,
+            positions=journal.load_positions(),
+            sector=sector,
+        )
+        journal.append(envelope, equity_usd=config.account.equity_usd, sector=sector)
     except (ValueError, ValidationError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -62,8 +73,20 @@ def _parser() -> argparse.ArgumentParser:
         help="Shorter text. Default off. Still prints the disclaimer.",
     )
     analyze_parser.add_argument("--config", type=Path, help="TOML config file. Overrides discovery.")
+    analyze_parser.add_argument(
+        "--sector",
+        default=None,
+        help="Sector label for this ticker. Used for the 3%% sector heat cap. Omit it and sector heat is not applied.",
+    )
     analyze_parser.add_argument("--verbose", action="store_true", help="Log to stderr. Stdout stays clean for --json.")
     return parser
+
+
+def _sector(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    return text or None
 
 
 def _configure_logging(verbose: bool) -> None:

@@ -1,14 +1,14 @@
 # halal-swing-cli
 
-Personal local checklist for Ziad Osman. A ticker goes in. A swing decision envelope comes out: entry, stop, target, size, next NYSE open, and reason codes — once the later milestones land.
+Personal local checklist for Ziad Osman. A ticker goes in. A swing decision envelope comes out: entry, stop, target, size, next NYSE open, and reason codes.
 
 **Not financial advice. Not a Shariah certification.** This is a personal rule checklist. It does not predict returns, and it does not certify compliance with AAOIFI, SC Malaysia, S&P Shariah, DJIM, or any other standard.
 
 Cash account, long equity only. No shorts, no conventional margin, no options, CFDs, or futures. You supply pre-screened tickers. v0 does not call Zoya and does not screen halal status. You own compliance, purification, and any scholar consult.
 
-Every future `ENTER_LONG` stamps `confidence: "checklist_only"`. That means the predetermined rules matched. It is not a claim of edge.
+An `ENTER_LONG` stamps `confidence: "checklist_only"`. That means the predetermined rules matched. It is not a claim of edge.
 
-`swing analyze` runs the checklist brain. A match can print `ENTER_LONG` with entry, stop, target, size, and the next NYSE open. Anything else stays `NO_TRADE` or `BLOCK`, with the disclaimer and config hash on every envelope. Set `account.equity_usd` or size is refused. The open-position book is not read yet, so heat on the command line only sees this trade.
+`swing analyze` runs the checklist brain. A match can print `ENTER_LONG` with entry, stop, target, size, and the next NYSE open. Anything else stays `NO_TRADE` or `BLOCK`, with the disclaimer and config hash on every envelope. Set `account.equity_usd` or size is refused. Each planned `ENTER_LONG` is appended to the paper journal, and the next run counts that open risk toward the 6% heat cap, the 3% sector cap, and the four-position limit.
 
 ## macOS setup
 
@@ -25,6 +25,7 @@ uv sync
 uv run swing analyze --help
 uv run swing analyze AAPL
 uv run swing analyze AAPL --json
+uv run swing analyze AAPL --sector Technology
 ```
 
 `uv sync` creates `.venv` and installs the locked dependencies from `uv.lock`. You do not need a system Python beyond what uv downloads (3.12).
@@ -37,7 +38,7 @@ Config and data on macOS live under:
 |---|---|
 | `config.toml` | Optional. Copy `config/swing.example.toml` |
 | `cache/bars/` | Parquet daily bars. Split-adjusted OHLC plus a corp-action suspect flag |
-| `journal.jsonl` | Paper journal (Chat 5, not written yet) |
+| `journal.jsonl` | Append-only paper journal of planned `ENTER_LONG` lines |
 
 A `swing.toml` in the current directory is also read, and it is gitignored so account size does not get committed. `SWING_CONFIG` or `--config` overrides discovery.
 
@@ -45,13 +46,32 @@ Linux is a fallback for CI and agents only. On Linux the data root is `$XDG_DATA
 
 ## What analyze prints
 
-`swing analyze AAPL` prints one envelope. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, and the others in `HANDOVER.md`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, size, next open), each gate name and status, and the disclaimer. `--compact` is off unless you pass it; the compact view is shorter and still includes those fields and the disclaimer. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
+`swing analyze AAPL` prints one envelope. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, size, next open), each gate name and status, and the disclaimer. `--compact` is off unless you pass it; the compact view is shorter and still includes those fields and the disclaimer. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
 
-Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, or a missing config path.
+Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, a missing config path, or a journal line that is not valid JSON.
+
+## Paper journal
+
+On macOS the file is `~/Library/Application Support/swing/journal.jsonl`. `SWING_DATA_DIR` overrides that root. The CLI creates the file on the first planned entry. `NO_TRADE` and `BLOCK` do not write a line and do not rewrite earlier ones.
+
+A line is one JSON object. `size_shares` is copied from the plan. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`, using the equity in config. If equity is unset, nothing is invented and nothing is journaled.
+
+Every line stays open risk. v0 does not delete or rewrite lines, so the book only grows. Four open plans block the next entry (`MAX_POSITIONS`). Prior risk plus 1% of equity above 6% blocks with `HEAT_LIMIT`.
+
+`--sector` is optional. Pass it when you know the ticker's sector and the 3% sector cap should apply. A blank sector is not lumped into an unknown bucket. There is no sector vendor in v0.
+
+Put equity in the TOML you actually load (`--config`, `./swing.toml`, or `~/Library/Application Support/swing/config.toml`):
+
+```toml
+[account]
+equity_usd = 100000
+```
+
+`config/swing.example.toml` shows the locked defaults. The example leaves equity commented out so a fresh hash still matches the built-in config.
 
 ## Environment variables
 
-None are required for the skeleton.
+None are required to print an envelope.
 
 | Variable | Required | Role |
 |---|---|---|
@@ -78,7 +98,7 @@ Prefs 1–12 are the built-in config. Details and the hash rule are in [docs/arc
 - SPY R² at or above 0.70 over 60 sessions warns only
 - Earnings blackout is strict (T−2 through T+1). Ordinary ex-div warns. A distribution at or above 1% of price still blocks
 - Bars: yfinance prototype or Massive. Events: Finnhub
-- Paper JSONL journal later. No live broker
+- Paper JSONL journal of planned entries. No live broker
 
 `config/swing.example.toml` matches those defaults. The hash of a run is SHA-256 of the canonical config JSON, so a policy edit is visible on the envelope.
 
@@ -92,4 +112,4 @@ uv run pytest
 
 Architecture and the decision to stay on Python + uv: [docs/architecture.md](docs/architecture.md), [docs/adr/0001-python-uv-and-boundaries.md](docs/adr/0001-python-uv-and-boundaries.md).
 
-Next milestone (hardening and the paper journal): [HANDOVER.md](HANDOVER.md).
+v0 is complete for cash longs once equity is set. Later choices (a bars bake-off, Massive when the free limit hurts, optional IBKR) are noted in [HANDOVER.md](HANDOVER.md).

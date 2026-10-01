@@ -1,4 +1,4 @@
-"""Local paper journal."""
+"""Local append-only paper journal."""
 
 from swing.journal.paper import PaperJournal
 
