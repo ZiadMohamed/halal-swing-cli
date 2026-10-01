@@ -56,6 +56,7 @@ class ContextLiveResearch:
             "numResults": 10,
             "freshness": "last_week",
             "country": "us",
+            "timeoutMS": int(self._timeout_s * 1000),
         }
         raw_body = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
@@ -74,13 +75,17 @@ class ContextLiveResearch:
                 payload_bytes = response.read()
         except urllib.error.HTTPError as exc:
             detail = exc.reason if isinstance(exc.reason, str) else ""
-            return self._error(query, _redact(f"http_{exc.code}:{detail}", self._api_key))
+            reason = _redact(f"http_{exc.code}:{detail}", self._api_key)
+            exc.close()
+            return self._error(query, reason)
         except Exception as exc:  # noqa: BLE001 — fail-soft boundary
-            return self._error(query, _redact(type(exc).__name__, self._api_key))
+            return self._error(query, _redact(f"{type(exc).__name__}:{exc}", self._api_key))
         try:
             payload = json.loads(payload_bytes.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             return self._error(query, "invalid_json")
+        if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+            return self._error(query, "invalid_payload")
         hits = _hits(payload)
         return ResearchResult(
             status="ok",

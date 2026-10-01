@@ -19,6 +19,8 @@ def test_product_guard_blocks_short_margin_and_derivatives():
     assert product_block(side="long", instrument="future", account_mode="cash") is ReasonCode.BLOCK_DERIVATIVE
     assert product_block(side="long", instrument="equity", account_mode="margin") is ReasonCode.BLOCK_MARGIN
     assert product_block(side="long", instrument="equity", account_mode="cash") is None
+    assert product_block(side="long", instrument="futures", account_mode="cash") is ReasonCode.BLOCK_DERIVATIVE
+    assert product_block(side="long", instrument="equity", account_mode="cash", longs_only=False) is ReasonCode.BLOCK_SHORT
 
 
 def test_shariah_codes_are_reserved_on_the_enum():

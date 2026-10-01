@@ -78,8 +78,9 @@ Defaults live in code so a fresh clone runs with no file. Optional overrides:
 1. `--config PATH`
 2. `SWING_CONFIG`
 3. `./swing.toml` (gitignored; local only)
-4. macOS: `~/Library/Application Support/swing/config.toml`
-5. other OS: `$XDG_CONFIG_HOME/swing/config.toml` or `~/.config/swing/config.toml`
+4. `$SWING_DATA_DIR/config.toml` when that variable is set and the file exists
+5. macOS: `~/Library/Application Support/swing/config.toml`
+6. other OS: `$XDG_CONFIG_HOME/swing/config.toml` or `~/.config/swing/config.toml`
 
 `config/swing.example.toml` mirrors the locked defaults. Copy it; the CLI does not read it unless you point at it.
 
@@ -140,7 +141,7 @@ Provider interface: `LiveResearch.enrich(ticker) -> ResearchResult`.
 | Env | Role |
 |---|---|
 | `CONTEXT_DEV_API_KEY` | Bearer token for the CLI process. Optional. |
-| `CONTEXT_DEV_BASE_URL` | Default `https://api.context.dev/v1`. |
+| `CONTEXT_DEV_BASE_URL` | Default `https://api.context.dev/v1`. Must be `https`, or `http` on localhost only. Anything else skips the call with `WARN_RESEARCH_ERROR` and does not send the key. |
 
 Factory behavior:
 

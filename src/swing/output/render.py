@@ -16,16 +16,16 @@ def render_text(envelope: Envelope) -> str:
     lines = [
         f"{envelope.ticker}  {envelope.decision.value}",
         f"config_hash {envelope.config_hash}",
-        envelope.disclaimer,
     ]
+    if envelope.reasons:
+        lines.append("reasons: " + ", ".join(item.code.value for item in envelope.reasons))
+    if envelope.warnings:
+        lines.append("warnings: " + ", ".join(item.code.value for item in envelope.warnings))
+    if envelope.research.status != "ok":
+        lines.append(f"research: {envelope.research.status} ({envelope.research.reason})")
     if not envelope.compact:
         lines.append(f"stage: {envelope.stage} — data and brain not run")
         for gate in envelope.gates:
             lines.append(f"  {gate.name}: {gate.status}")
-        if envelope.warnings:
-            lines.append("warnings: " + ", ".join(item.code.value for item in envelope.warnings))
-        if envelope.reasons:
-            lines.append("reasons: " + ", ".join(item.code.value for item in envelope.reasons))
-        if envelope.research.status != "ok":
-            lines.append(f"research: {envelope.research.status} ({envelope.research.reason})")
+    lines.append(envelope.disclaimer)
     return "\n".join(lines) + "\n"

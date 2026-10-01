@@ -108,6 +108,49 @@ def test_example_config_matches_builtin_defaults():
     assert config_hash(loaded) == config_hash(SwingConfig())
 
 
+def test_swing_data_dir_config_toml_is_loaded(tmp_path: Path):
+    root = tmp_path / "moved"
+    root.mkdir()
+    (root / "config.toml").write_text("[risk]\nper_trade = 0.02\n", encoding="utf-8")
+    cfg = load_config(env={"SWING_DATA_DIR": str(root)})
+    assert cfg.risk.per_trade == 0.02
+    assert cfg.heat.total_max == 0.06
+
+
+def test_explicit_config_beats_data_dir(tmp_path: Path):
+    root = tmp_path / "moved"
+    root.mkdir()
+    (root / "config.toml").write_text("[risk]\nper_trade = 0.02\n", encoding="utf-8")
+    explicit = tmp_path / "other.toml"
+    explicit.write_text("[risk]\nper_trade = 0.03\n", encoding="utf-8")
+    cfg = load_config(path=explicit, env={"SWING_DATA_DIR": str(root)})
+    assert cfg.risk.per_trade == 0.03
+
+
+def test_locked_policy_cannot_be_relaxed():
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"spy_r2": {"effect": "block"}})
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"shariah": {"screen_in_v0": True}})
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"shariah": {"provider": "zoya"}})
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"account": {"longs_only": False}})
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"setups": {"mutex_order": ["RSI2_MR", "BO_RVOL", "PB_EMA"]}})
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"heat": {"total_max": 0.06, "sector_max": 0.07}})
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"stops": {"atr_period": 0}})
+
+
+def test_data_table_must_be_a_table(tmp_path: Path):
+    path = tmp_path / "swing.toml"
+    path.write_text('data = "finnhub"\n', encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_config(path=path, env={"SWING_BARS_PROVIDER": "massive"})
+
+
 def test_missing_explicit_config_errors(tmp_path: Path):
     missing = tmp_path / "nope.toml"
     with pytest.raises(FileNotFoundError):

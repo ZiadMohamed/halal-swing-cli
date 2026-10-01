@@ -91,6 +91,38 @@ def test_context_search_sends_bearer_header_and_parses_hits():
     assert result.affects_checklist_math is False
 
 
+def test_insecure_base_url_does_not_send_the_key():
+    client = build_live_research(
+        SwingConfig(),
+        env={"CONTEXT_DEV_API_KEY": "ctxt_secret", "CONTEXT_DEV_BASE_URL": "http://evil.example/v1"},
+    )
+    assert not isinstance(client, ContextLiveResearch)
+    result = client.enrich("AAPL")
+    assert result.status == "error"
+    assert result.reason == "insecure_base_url"
+    assert result.hits == ()
+    assert "ctxt_secret" not in (result.reason or "")
+
+
+def test_https_base_url_builds_the_context_client():
+    client = build_live_research(
+        SwingConfig(),
+        env={"CONTEXT_DEV_API_KEY": "ctxt_test", "CONTEXT_DEV_BASE_URL": "https://api.context.dev/v1"},
+    )
+    assert isinstance(client, ContextLiveResearch)
+
+
+def test_missing_results_array_is_an_error():
+    def opener(req, timeout=0):
+        return _Resp(b'{"query": "AAPL stock news"}')
+
+    client = ContextLiveResearch(api_key="ctxt_secret", opener=opener)
+    result = client.enrich("AAPL")
+    assert result.status == "error"
+    assert result.reason == "invalid_payload"
+    assert "ctxt_secret" not in (result.reason or "")
+
+
 def test_http_error_is_soft_and_redacts_the_key():
     def opener(req, timeout=0):
         raise urllib.error.HTTPError(

@@ -14,6 +14,7 @@ Read [docs/architecture.md](docs/architecture.md) before editing. The product lo
 - Shariah reason codes exist on `ReasonCode` and in `SHARIAH_REASON_CODES`. v0 analyze must not emit them and must not call Zoya
 - Live research adapter: `build_live_research()` → Context `POST /web/search` or a skip. Missing `CONTEXT_DEV_API_KEY` warns and continues. `affects_checklist_math` is fixed `false`
 - Brain call has no research argument (`StubBrain.evaluate(ticker, config)`). Keep it that way
+- `analyze` copies `ChecklistResult.confidence`, `side`, and `plan` onto the envelope. `ENTER_LONG` still fails validation without `confidence="checklist_only"`, `side="long"`, and a plan. `StubBrain` leaves those empty. Set them on `ChecklistResult` in Chat 3; do not hardcode them in the orchestrator again
 - macOS paths: `default_data_dir()`, `bars_cache_dir()`, `journal_path()` in `src/swing/paths.py`
 - Ports with no vendors behind them: `src/swing/data/ports.py`
 - `PaperJournal.append` and `IbkrBrokerStub.place_order` raise `NotImplementedError` on purpose
@@ -55,12 +56,12 @@ Tests: `uv run pytest` (35 passing on Chat 1).
 | Key | Chat | Notes |
 |---|---|---|
 | `CONTEXT_DEV_API_KEY` | done (optional) | News enrichment only. Not bars |
-| `CONTEXT_DEV_BASE_URL` | done (optional) | Default `https://api.context.dev/v1` |
+| `CONTEXT_DEV_BASE_URL` | done (optional) | Default `https://api.context.dev/v1`. Non-https URLs (except localhost) are refused and do not send the key |
+| `SWING_DATA_DIR` | done | Overrides the data root and, when `config.toml` sits in that directory, config discovery |
 | `FINNHUB_API_KEY` | you | Events and calendars only |
 | `MASSIVE_API_KEY` | you | Bars when provider is `massive`. Pay Massive Starter (~$29) only when Basic rate or history limits hurt. That is a billing choice, not a code default |
 | `SWING_BARS_PROVIDER` | done | `yfinance` or `massive` |
-| `SWING_CONFIG` | done | TOML path |
-| `SWING_DATA_DIR` | done | Overrides the macOS Application Support root |
+| `SWING_CONFIG` | done | TOML path. Wins over `SWING_DATA_DIR/config.toml` |
 
 No key is required to run the skeleton.
 

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from typing import Literal
+
 from swing.brain.gates import PIPELINE_GATES
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
-from swing.envelope import GateView, Reason
+from swing.envelope import GateView, Plan, Reason
 
 
 @dataclass(frozen=True)
@@ -15,9 +17,9 @@ class ChecklistResult:
     decision: DecisionKind
     reasons: tuple[Reason, ...]
     warnings: tuple[Reason, ...]
-    confidence: str | None
-    side: str | None
-    plan: None
+    confidence: Literal["checklist_only"] | None
+    side: Literal["long"] | None
+    plan: Plan | None
     gates: tuple[GateView, ...]
 
 

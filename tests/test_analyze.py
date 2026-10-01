@@ -78,6 +78,49 @@ def test_margin_config_blocks_before_a_plan_exists():
     assert env.research.reason == "not_run_product_block"
 
 
+def test_insecure_research_url_warns_and_keeps_the_checklist():
+    env = analyze(
+        "AAPL",
+        env={"CONTEXT_DEV_API_KEY": "ctxt_secret", "CONTEXT_DEV_BASE_URL": "http://evil.example/v1"},
+    )
+    assert env.decision is DecisionKind.NO_TRADE
+    assert env.reasons[0].code is ReasonCode.PIPELINE_NOT_IMPLEMENTED
+    assert any(warning.code is ReasonCode.WARN_RESEARCH_ERROR for warning in env.warnings)
+    assert env.research.reason == "insecure_base_url"
+    assert env.plan is None
+
+
+def test_brain_enter_fields_reach_the_envelope():
+    class _EnteringBrain:
+        def evaluate(self, ticker: str, config: SwingConfig):
+            del ticker, config
+            from swing.brain.stub import ChecklistResult
+            from swing.envelope import GateView
+
+            return ChecklistResult(
+                decision=DecisionKind.ENTER_LONG,
+                reasons=(),
+                warnings=(),
+                confidence="checklist_only",
+                side="long",
+                plan=Plan(
+                    side="long",
+                    entry=100.0,
+                    stop=90.0,
+                    target=120.0,
+                    size_shares=4,
+                    next_open="2026-10-02T13:30:00-04:00",
+                ),
+                gates=tuple(GateView(name=name, status="pass") for name in PIPELINE_GATES),
+            )
+
+    env = analyze("AAPL", env={}, brain=_EnteringBrain(), research_result=_note())
+    assert env.decision is DecisionKind.ENTER_LONG
+    assert env.confidence == "checklist_only"
+    assert env.side == "long"
+    assert env.plan is not None and env.plan.size_shares == 4
+
+
 def test_invalid_ticker_is_rejected():
     with pytest.raises(ValueError):
         analyze("   ", env={})

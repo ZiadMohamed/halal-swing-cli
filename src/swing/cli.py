@@ -24,7 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     _configure_logging(args.verbose)
     try:
         config = load_config(path=args.config)
-        envelope = analyze(args.ticker, config=config, compact=args.compact)
+        compact = bool(args.compact or config.output.compact)
+        envelope = analyze(args.ticker, config=config, compact=compact)
     except (ValueError, ValidationError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2

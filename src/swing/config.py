@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from swing.hashing import config_hash as hash_config
 
@@ -34,22 +34,28 @@ class HeatConfig(_Strict):
     total_max: float = Field(default=0.06, gt=0, le=1)
     sector_max: float = Field(default=0.03, gt=0, le=1)
 
+    @model_validator(mode="after")
+    def _sector_within_total(self) -> HeatConfig:
+        if self.sector_max > self.total_max:
+            raise ValueError("sector heat cannot exceed total heat")
+        return self
+
 
 class BoRvolConfig(_Strict):
-    rvol_min: float = 1.5
-    breakout_lookback: int = 20
-    sma_period: int = 50
+    rvol_min: float = Field(default=1.5, gt=0)
+    breakout_lookback: int = Field(default=20, ge=1)
+    sma_period: int = Field(default=50, ge=1)
 
 
 class PbEmaConfig(_Strict):
-    ema_trend: int = 50
-    ema_touch: int = 20
+    ema_trend: int = Field(default=50, ge=1)
+    ema_touch: int = Field(default=20, ge=1)
 
 
 class Rsi2Config(_Strict):
-    rsi_period: int = 2
-    rsi_max: int = 10
-    sma_trend: int = 200
+    rsi_period: int = Field(default=2, ge=1)
+    rsi_max: int = Field(default=10, ge=1, le=100)
+    sma_trend: int = Field(default=200, ge=1)
 
 
 class SetupsConfig(_Strict):
@@ -67,14 +73,14 @@ class SetupsConfig(_Strict):
 
 
 class StopsConfig(_Strict):
-    atr_period: int = 14
-    atr_multiple: float = 1.5
-    reward_r: float = 2.0
+    atr_period: int = Field(default=14, ge=1)
+    atr_multiple: float = Field(default=1.5, gt=0)
+    reward_r: float = Field(default=2.0, gt=0)
 
 
 class SpyR2Config(_Strict):
-    threshold: float = 0.70
-    lookback_days: int = 60
+    threshold: float = Field(default=0.70, gt=0, le=1)
+    lookback_days: int = Field(default=60, ge=1)
     effect: Literal["warn"] = "warn"
 
 
@@ -112,7 +118,7 @@ class JournalConfig(_Strict):
 
 class ShariahConfig(_Strict):
     screen_in_v0: Literal[False] = False
-    provider: str | None = None
+    provider: Literal[None] = None
 
 
 class TimezoneConfig(_Strict):
@@ -143,14 +149,25 @@ class SwingConfig(_Strict):
 
 
 def resolve_config_path(env: Mapping[str, str], *, discover_files: bool) -> Path | None:
+    """Resolve a config file.
+
+    Order: SWING_CONFIG, ./swing.toml (only when discovering), SWING_DATA_DIR/config.toml,
+    then the platform file. An explicit load_config(path=...) never reaches this.
+    """
     raw = env.get("SWING_CONFIG")
     if raw:
         return Path(raw).expanduser()
+    if discover_files:
+        cwd_file = Path.cwd() / "swing.toml"
+        if cwd_file.is_file():
+            return cwd_file
+    data_dir = env.get("SWING_DATA_DIR")
+    if data_dir:
+        relocated = Path(data_dir).expanduser() / "config.toml"
+        if relocated.is_file():
+            return relocated
     if not discover_files:
         return None
-    cwd_file = Path.cwd() / "swing.toml"
-    if cwd_file.is_file():
-        return cwd_file
     home = Path.home()
     if sys.platform == "darwin":
         mac = home / "Library" / "Application Support" / "swing" / "config.toml"
@@ -182,7 +199,10 @@ def load_config(path: Path | None = None, env: Mapping[str, str] | None = None) 
         data = loaded
     provider = environ.get("SWING_BARS_PROVIDER")
     if provider:
-        current = dict(data.get("data") or {})
+        current = data.get("data") or {}
+        if not isinstance(current, dict):
+            raise ValueError("Config key 'data' must be a table")
+        current = dict(current)
         current["bars_provider"] = provider
         data["data"] = current
     return SwingConfig.model_validate(data)

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import Literal
 
 from swing.brain.gates import PIPELINE_GATES
 from swing.brain.stub import StubBrain
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig, load_config
 from swing.disclaimer import DISCLAIMER, SHARIAH_NOTE
-from swing.envelope import Envelope, GateView, Reason, ResearchHitView, ResearchView, ShariahView
+from swing.envelope import Envelope, GateView, Plan, Reason, ResearchHitView, ResearchView, ShariahView
 from swing.guards import product_block
 from swing.research.factory import build_live_research
 from swing.research.models import ResearchResult
@@ -42,7 +43,12 @@ def analyze(
 ) -> Envelope:
     symbol = normalize_ticker(ticker)
     cfg = config if config is not None else load_config(env=env if env is not None else None)
-    block = product_block(side="long", instrument="equity", account_mode=cfg.account.mode)
+    block = product_block(
+        side="long",
+        instrument="equity",
+        account_mode=cfg.account.mode,
+        longs_only=cfg.account.longs_only,
+    )
     if block is not None:
         return _envelope(
             ticker=symbol,
@@ -72,6 +78,9 @@ def analyze(
         warnings=tuple(warnings),
         research=research_result,
         gates=checklist.gates,
+        confidence=checklist.confidence,
+        side=checklist.side,
+        plan=checklist.plan,
     )
 
 
@@ -103,15 +112,18 @@ def _envelope(
     warnings: tuple[Reason, ...],
     research: ResearchResult,
     gates: tuple[GateView, ...] | None = None,
+    confidence: Literal["checklist_only"] | None = None,
+    side: Literal["long"] | None = None,
+    plan: Plan | None = None,
 ) -> Envelope:
     return Envelope(
         ticker=ticker,
         decision=decision,
         reasons=list(reasons),
         warnings=list(warnings),
-        confidence=None,
-        side=None,
-        plan=None,
+        confidence=confidence,
+        side=side,
+        plan=plan,
         shariah=ShariahView(screened=False, provider=None, status="user_supplied", note=SHARIAH_NOTE),
         research=ResearchView(
             status=research.status,

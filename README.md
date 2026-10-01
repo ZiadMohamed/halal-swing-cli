@@ -56,12 +56,12 @@ None are required for the skeleton.
 | Variable | Required | Role |
 |---|---|---|
 | `CONTEXT_DEV_API_KEY` | no | Live news search at analyze time. Bearer token for `POST /web/search`. Not an OHLC source. |
-| `CONTEXT_DEV_BASE_URL` | no | Default `https://api.context.dev/v1` |
+| `CONTEXT_DEV_BASE_URL` | no | Default `https://api.context.dev/v1`. `https` only, except `http` on localhost |
 | `FINNHUB_API_KEY` | Chat 2 | Earnings and dividend calendars only. Never bars. |
 | `MASSIVE_API_KEY` | Chat 2 | Bars when `bars_provider` is `massive` |
 | `SWING_BARS_PROVIDER` | no | `yfinance` (default) or `massive` |
 | `SWING_CONFIG` | no | TOML file path |
-| `SWING_DATA_DIR` | no | Overrides the Application Support root |
+| `SWING_DATA_DIR` | no | Overrides the data root. If `config.toml` is inside it, that file is used unless `--config` or `SWING_CONFIG` is set |
 
 If `CONTEXT_DEV_API_KEY` is missing, analyze adds `WARN_RESEARCH_UNAVAILABLE` and continues. Context headlines are advisory. They do not change entry, stop, target, size, or the decision the checklist produces. Set `research.enabled = false` in TOML to skip the warning on purpose.
 
