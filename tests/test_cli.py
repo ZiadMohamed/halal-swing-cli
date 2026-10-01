@@ -47,15 +47,18 @@ def test_json_stub_is_parseable_and_compact_defaults_off(capsys, monkeypatch):
     assert "ENTER_SHORT" not in captured.out
 
 
-def test_compact_text_keeps_reason_and_hides_gates(capsys, monkeypatch):
+def test_compact_text_keeps_reason_gates_and_disclaimer(capsys, monkeypatch):
     monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
     code = main(["analyze", "AAPL", "--compact"])
     assert code == 0
     text = capsys.readouterr().out
+    assert "NO_TRADE" in text
     assert "NO_MARKET_DATA" in text
     assert "missing_api_key" in text
     assert "Not financial advice" in text
-    assert "data_auth" not in text
+    assert "brain not run" not in text
+    assert "data_auth=no_trade" in text
+    assert "liquidity=not_run" in text
 
 
 def test_config_compact_is_honored_without_the_flag(tmp_path, capsys, monkeypatch):
@@ -86,6 +89,8 @@ def test_human_output_includes_disclaimer_and_hash(capsys, monkeypatch):
     assert "NO_TRADE" in text
     assert "config_hash" in text
     assert "Not financial advice" in text
+    assert "brain not run" not in text
+    assert "  data_auth: no_trade" in text
 
 
 def test_verbose_logs_do_not_pollute_json_stdout(capsys, monkeypatch):
@@ -138,6 +143,49 @@ def test_attached_market_data_stays_no_trade(capsys, monkeypatch):
     assert payload["data"]["next_open"] == "2026-10-02T09:30:00-04:00"
     assert "ENTER_SHORT" not in json.dumps(payload)
     assert payload["confidence"] is None
+
+
+def test_text_uses_the_configured_user_clock(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
+    path = tmp_path / "swing.toml"
+    path.write_text('[timezone]\nuser = "Europe/London"\n', encoding="utf-8")
+    market = MarketData(
+        ticker="AAPL",
+        status="ok",
+        bars_provider="yfinance",
+        events_provider="finnhub",
+        bars=BarSeries(
+            ticker="AAPL",
+            provider="yfinance",
+            bars=(
+                DailyBar(
+                    session=date(2026, 10, 2),
+                    open=1,
+                    high=1,
+                    low=1,
+                    close=1,
+                    volume=1,
+                    raw_close=1,
+                ),
+            ),
+            corp_action_suspect=False,
+            corp_action_reasons=(),
+            adjustment="split_and_dividend",
+        ),
+        earnings=(),
+        dividends=(),
+        next_open="2026-10-05T09:30:00-04:00",
+        errors=(),
+    )
+    monkeypatch.setattr("swing.analyze.load_market_data", lambda *args, **kwargs: market)
+    code = main(["analyze", "AAPL", "--config", str(path)])
+    assert code == 0
+    text = capsys.readouterr().out
+    assert "America/New_York 2026-10-05T09:30:00-04:00" in text
+    assert "Europe/London 2026-10-05T14:30:00+01:00" in text
+    assert "Africa/Cairo" not in text
+    assert "brain not run" not in text
+    assert "Not financial advice" in text
 
 
 def test_bad_ticker_exits_2(capsys):

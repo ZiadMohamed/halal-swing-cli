@@ -37,7 +37,7 @@ src/swing/
   paths.py          macOS Application Support, Linux fallback
   research/         LiveResearch adapter (Context or skip)
   data/ports.py     BarProvider, EventProvider, CalendarProvider
-  brain/            gate order + ChecklistBrain stub
+  brain/            gate order + ChecklistBrain
   output/render.py  text and JSON
   journal/paper.py  JSONL stub (Chat 5)
   broker/ibkr.py    IBKR stub, no network
@@ -172,13 +172,13 @@ Data and config root on macOS:
 
 ## How later chats plug in
 
-**Chat 2 — Data.** Done. `load_market_data` returns `MarketData`: split-adjusted bars (yfinance or Massive), a `corp_action_suspect` flag, Finnhub earnings and dividend events, and `next_open` from the NYSE calendar. Parquet lives under `bars_cache_dir()`. The analyze envelope copies a summary onto `data` and still returns `NO_TRADE` while the brain is the stub. Finnhub does not serve OHLC. See `HANDOVER.md` for the fields Chat 3 reads.
+**Chat 2 — Data.** Done. `load_market_data` returns `MarketData`: split-adjusted bars (yfinance or Massive), a `corp_action_suspect` flag, Finnhub earnings and dividend events, and `next_open` from the NYSE calendar. Parquet lives under `bars_cache_dir()`. The analyze envelope copies a summary onto `data`. Finnhub does not serve OHLC.
 
-**Chat 3 — Brain.** Done. `ChecklistBrain` walks `PIPELINE_GATES` in order. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. High SPY R² is `WARN_SPY_R2` only. Earnings strict blackout is `NO_TRADE`. `confidence` is `checklist_only` on enter. Research is not an argument. See `HANDOVER.md` for the fields Chat 4 should render. The CLI still assumes an empty open book until Chat 5 passes positions.
+**Chat 3 — Brain.** Done. `ChecklistBrain` walks `PIPELINE_GATES` in order. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. High SPY R² is `WARN_SPY_R2` only. Earnings strict blackout is `NO_TRADE`. `confidence` is `checklist_only` on enter. Research is not an argument. The CLI still assumes an empty open book until Chat 5 passes positions.
 
-**Chat 4 — Output.** Extend `output/render.py`. `--compact` stays default off. Show `next_open` in `America/New_York` and the clock Ziad watches (`Africa/Cairo`). Keep the disclaimer on every view, including compact.
+**Chat 4 — Output.** Done. `render_text` shows the decision, reason and warning codes, the plan when present, gate name and status, and the disclaimer on the full view and on `--compact`. `next_open` is printed in `America/New_York` and in `timezone.user` (default `Africa/Cairo`), the same instant. `--compact` stays default off. `--json` is one document and still carries `config_hash`, `shariah.screened=false`, and `research.affects_checklist_math=false`. A headline does not change plan numbers. See `HANDOVER.md` for what Chat 5 should journal.
 
-**Chat 5 — Hardening.** Synthetic fixtures, acceptance tests, append-only paper JSONL at `journal_path()`. Leave `IbkrBrokerStub` raising. No live broker until Ziad asks in a later version.
+**Chat 5 — Hardening.** Synthetic fixtures, acceptance tests, append-only paper JSONL at `journal_path()`. Pass the open book into `analyze`. Leave `IbkrBrokerStub` raising. No live broker until Ziad asks in a later version.
 
 ## Out of v0
 

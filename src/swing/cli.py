@@ -32,7 +32,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         sys.stdout.write(render_json(envelope))
     else:
-        sys.stdout.write(render_text(envelope))
+        sys.stdout.write(
+            render_text(
+                envelope,
+                user_tz=config.timezone.user,
+                market_tz=config.timezone.market,
+            )
+        )
     return 0
 
 

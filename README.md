@@ -45,7 +45,7 @@ Linux is a fallback for CI and agents only. On Linux the data root is `$XDG_DATA
 
 ## What analyze prints
 
-`swing analyze AAPL` prints one envelope. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, and the others in `HANDOVER.md`). The JSON envelope includes the plan when the decision is `ENTER_LONG`, a `data` section (bar count, suspect flag, earnings dates, dividend amounts, next NYSE open), and `stage` (`skeleton`, `partial`, or `checklist`). `--compact` is off unless you pass it. `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. The text view still says the brain has not run; Chat 4 replaces that line.
+`swing analyze AAPL` prints one envelope. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, and the others in `HANDOVER.md`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, size, next open), each gate name and status, and the disclaimer. `--compact` is off unless you pass it; the compact view is shorter and still includes those fields and the disclaimer. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
 
 Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, or a missing config path.
 
@@ -92,4 +92,4 @@ uv run pytest
 
 Architecture and the decision to stay on Python + uv: [docs/architecture.md](docs/architecture.md), [docs/adr/0001-python-uv-and-boundaries.md](docs/adr/0001-python-uv-and-boundaries.md).
 
-Next milestone (terminal output): [HANDOVER.md](HANDOVER.md).
+Next milestone (hardening and the paper journal): [HANDOVER.md](HANDOVER.md).
