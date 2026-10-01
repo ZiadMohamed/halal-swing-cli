@@ -20,7 +20,7 @@ There is no `ENTER_SHORT`. Short, margin, and derivative intents stop at `BLOCK_
 
 ## Stack
 
-See [ADR 0001](adr/0001-python-uv-and-boundaries.md). Python 3.12, uv, Pydantic, stdlib TOML, stdlib HTTP for Context. Parquet arrives with Chat 2.
+See [ADR 0001](adr/0001-python-uv-and-boundaries.md). Python 3.12, uv, Pydantic, stdlib TOML, stdlib HTTP. Parquet bars are cached under the macOS data root.
 
 ## Layout
 
@@ -49,9 +49,9 @@ src/swing/
 argv
   → load SwingConfig (defaults, optional TOML, SWING_BARS_PROVIDER)
   → product guard (short / margin / derivative)
-  → ChecklistBrain.evaluate(ticker, config)     # no research object
-  → LiveResearch.enrich(ticker)                 # fail-soft
-  → Envelope (checklist fields + advisory research + warnings)
+  → ChecklistBrain.evaluate(ticker, config, market)  # no research object
+  → LiveResearch.enrich(ticker)                    # fail-soft
+  → Envelope (checklist fields + data summary + advisory research)
   → stdout
 ```
 
@@ -172,7 +172,7 @@ Data and config root on macOS:
 
 ## How later chats plug in
 
-**Chat 2 — Data.** Implement `BarProvider`, `EventProvider`, and `CalendarProvider` in `src/swing/data/`. Register them from config `data.bars_provider` (`yfinance` or `massive`) and `data.events_provider` (`finnhub` only). Read `HANDOVER.md`. Do not let Finnhub serve OHLC. Keep split-adjusted series and a corp-action suspect flag on the bar frame. `next_open` uses the NYSE calendar, not a naive `+1 day`.
+**Chat 2 — Data.** Done. `load_market_data` returns `MarketData`: split-adjusted bars (yfinance or Massive), a `corp_action_suspect` flag, Finnhub earnings and dividend events, and `next_open` from the NYSE calendar. Parquet lives under `bars_cache_dir()`. The analyze envelope copies a summary onto `data` and still returns `NO_TRADE` while the brain is the stub. Finnhub does not serve OHLC. See `HANDOVER.md` for the fields Chat 3 reads.
 
 **Chat 3 — Brain.** Replace `StubBrain`. Walk `PIPELINE_GATES` in order: data/auth, liquidity, soft-veto, earnings, regime, heat, ADR, setup mutex, RR/stop, next_open. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. High SPY R² is `WARN_SPY_R2` only. Earnings strict blackout is `NO_TRADE`. Stamp `confidence: checklist_only` on enter. Do not pass `LiveResearch` into indicator functions. Soft news, if used at all, appends `WARN_NEWS` after numbers are fixed.
 

@@ -23,8 +23,16 @@ def render_text(envelope: Envelope) -> str:
         lines.append("warnings: " + ", ".join(item.code.value for item in envelope.warnings))
     if envelope.research.status != "ok":
         lines.append(f"research: {envelope.research.status} ({envelope.research.reason})")
+    if envelope.data.status != "not_loaded":
+        suspect = "suspect" if envelope.data.corp_action_suspect else "clean"
+        lines.append(f"data: {envelope.data.status} bars={envelope.data.bar_count} {suspect}")
+        if envelope.data.next_open:
+            lines.append(f"next_open {envelope.data.next_open}")
     if not envelope.compact:
-        lines.append(f"stage: {envelope.stage} — data and brain not run")
+        if envelope.data.status == "not_loaded":
+            lines.append(f"stage: {envelope.stage} — data and brain not run")
+        else:
+            lines.append(f"stage: {envelope.stage} — brain not run")
         for gate in envelope.gates:
             lines.append(f"  {gate.name}: {gate.status}")
     lines.append(envelope.disclaimer)

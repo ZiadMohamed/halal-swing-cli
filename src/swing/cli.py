@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = load_config(path=args.config)
         compact = bool(args.compact or config.output.compact)
-        envelope = analyze(args.ticker, config=config, compact=compact)
+        envelope = analyze(args.ticker, config=config, compact=compact, fetch_market=True)
     except (ValueError, ValidationError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2

@@ -1,0 +1,13 @@
+[
+  {
+    "symbol": "AAPL",
+    "date": "2026-11-06",
+    "amount": 0.26,
+    "adjustedAmount": 0.26,
+    "payDate": "2026-11-13",
+    "recordDate": "2026-11-10",
+    "declarationDate": "2026-10-30",
+    "currency": "USD",
+    "freq": "Quarterly"
+  }
+]

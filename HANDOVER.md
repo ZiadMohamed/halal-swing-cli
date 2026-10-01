@@ -1,90 +1,131 @@
-# Handover — Chat 2 (Data)
+# Handover — Chat 3 (Brain)
 
-Chat 1 shipped a runnable skeleton. Your job is market data only: bars, events, the NYSE calendar, and a Parquet cache. Do not implement setups, sizing, or the paper journal. Those are Chats 3 and 5.
+Chat 2 shipped the data layer. Your job is the checklist brain: gates, indicators, the setup mutex, size, and heat. Do not place orders, do not write the paper journal, and do not restyle the terminal. Those are Chats 5 and 4.
 
 Read [docs/architecture.md](docs/architecture.md) before editing. The product locks are already in `SwingConfig`. Do not invent a fatwa, a Shariah screen, or a trading edge.
 
-## What exists
+## What Chat 2 shipped
 
-- Installable CLI: `uv run swing analyze --help` and `uv run swing analyze TICKER`
-- `swing analyze` returns envelope schema `1.1.0` with disclaimer, `config_hash`, and `NO_TRADE` / `PIPELINE_NOT_IMPLEMENTED`
-- Locked defaults in `src/swing/config.py` and `config/swing.example.toml`
-- `config_hash()` in `src/swing/hashing.py` (SHA-256 of sorted compact JSON). Do not change the encoding
-- Product guards in `src/swing/guards.py`: short → `BLOCK_SHORT`, margin → `BLOCK_MARGIN`, option/CFD/future → `BLOCK_DERIVATIVE`. There is no `ENTER_SHORT`
-- Shariah reason codes exist on `ReasonCode` and in `SHARIAH_REASON_CODES`. v0 analyze must not emit them and must not call Zoya
-- Live research adapter: `build_live_research()` → Context `POST /web/search` or a skip. Missing `CONTEXT_DEV_API_KEY` warns and continues. `affects_checklist_math` is fixed `false`
-- Brain call has no research argument (`StubBrain.evaluate(ticker, config)`). Keep it that way
-- `analyze` copies `ChecklistResult.confidence`, `side`, and `plan` onto the envelope. `ENTER_LONG` still fails validation without `confidence="checklist_only"`, `side="long"`, and a plan. `StubBrain` leaves those empty. Set them on `ChecklistResult` in Chat 3; do not hardcode them in the orchestrator again
-- macOS paths: `default_data_dir()`, `bars_cache_dir()`, `journal_path()` in `src/swing/paths.py`
-- Ports with no vendors behind them: `src/swing/data/ports.py`
-- `PaperJournal.append` and `IbkrBrokerStub.place_order` raise `NotImplementedError` on purpose
+- `yfinance` (default bars), `pyarrow` (Parquet), and `exchange-calendars` (NYSE). No extra HTTP library. Massive and Finnhub use the stdlib client. `uv.lock` is universal, including macOS arm64 and x86_64 wheels.
+- `BarProvider.fetch_daily(ticker, lookback_sessions)`:
+  - `yfinance` when `data.bars_provider` is `yfinance` (the default). `auto_adjust=True`, so OHLC is split- and dividend-adjusted.
+  - Massive Basic when it is `massive` and `MASSIVE_API_KEY` is set. `adjusted=true` is split-adjusted only (Massive's own meaning). Unadjusted bars are fetched beside them for the suspect check.
+  - Finnhub is rejected as a bars provider. There is no candle call.
+- Parquet cache at `bars_cache_dir()` (`~/Library/Application Support/swing/cache/bars/{TICKER}.parquet` on macOS). A fresh file is reused when its last session is the last completed NYSE session and it holds at least `lookback` rows. Early closes count as completed after that day's close (13:00), not as holidays.
+- `FinnhubEvents`: earnings calendar and cash dividend calendar only.
+- `NyseCalendar.next_open(after_iso)` returns the next regular open strictly after that timestamp, as an ISO string in `America/New_York` (`09:30:00` with `-05:00` or `-04:00`). Holidays are skipped. The Friday after Thanksgiving is a session.
+- `swing analyze` loads that bundle and copies a summary onto `envelope.data`. The decision is still `NO_TRADE` / `PIPELINE_NOT_IMPLEMENTED`. `stage` is still `"skeleton"`. No RSI, ATR, or size is computed.
+- `StubBrain.evaluate(ticker, config, market=None)` accepts `MarketData` and ignores it. A brain that does not take `market` still runs. Research is never an argument.
 
-`stage` on the envelope is the literal `"skeleton"`. Widen that type when a later chat changes the stage. Do not flip it to look finished while the brain is still the stub.
+`uv run pytest` does not use the network (82 tests after Chat 1's 35, plus the data suite). `uv run swing analyze --help` does not need vendor keys.
 
-Tests: `uv run pytest` (35 passing on Chat 1).
+## How you consume data
 
-## What is stubbed
+Call `load_market_data(ticker, config)` or read the `market` argument. Do not construct HTTP clients in the brain. Do not pass `ResearchResult` into indicator code.
+
+```python
+from swing.data import load_market_data
+from swing.data.models import DEFAULT_LOOKBACK_SESSIONS, MarketData
+
+market = load_market_data("AAPL", config)  # lookback defaults to 320 sessions
+series = market.bars                       # None when the bars vendor failed
+```
+
+`BarSeries.bars` is oldest-first. Each `DailyBar` has `session`, split-adjusted `open` / `high` / `low` / `close`, `volume`, and `raw_close` (unadjusted close, for audit only). Use `close` for indicators.
+
+| Field | Use |
+|---|---|
+| `market.bars.corp_action_suspect` | If true, do not run indicators. `NO_TRADE`. |
+| `market.bars.corp_action_reasons` | `missing_split`, `adjustment_mismatch`, `unexplained_gap` |
+| `market.bars.adjustment` | `split_and_dividend` (yfinance) or `split` (Massive) |
+| `market.earnings` | `report_date` is T. `hour` is `bmo`, `amc`, `dmh`, or `unknown` |
+| `market.dividends` | `ex_date`, `amount` (cash per share), `currency` |
+| `market.next_open` | ISO timestamp already in `America/New_York` |
+| `market.events_known` | False when Finnhub failed or the key was missing |
+| `market.errors` | `missing_api_key:MASSIVE_API_KEY`, `missing_api_key:FINNHUB_API_KEY`, or `vendor_error:...` |
+| `market.status` | `ok`, `partial` (bars ok, events not), or `error` (no bars) |
+
+`analyze` already passes this object when `evaluate` has a `market` parameter. Keep research off that signature.
+
+SPY for the R² warning is not attached. Fetch it with the same bar provider: `fetch_daily("SPY", config.spy_r2.lookback_days)` or `load_market_data` is ticker-scoped, so call the provider directly. A high SPY R² stays `WARN_SPY_R2` only.
+
+The envelope `data` object is a summary (counts, suspect flag, earnings dates, dividend amounts, `next_open`, errors). The full series is `MarketData.bars`, and the same rows are in the Parquet file. Do not recompute the suspect flag unless you are looking at `raw_close` yourself.
+
+`DEFAULT_LOOKBACK_SESSIONS` is 320. That is not a hashed config field. SMA(200) needs the tail of this window.
+
+### corp_action_suspect
+
+True when the adjusted series and the vendor's unadjusted series disagree, or a large gap has no listed action. Chat 3 must refuse the series.
+
+- `missing_split` — unadjusted close jumps by a common split ratio (2, 3, 4, 5, 10, 3-for-2, and the inverses, within 3%) and the vendor listed no split on that session. A real crash of that size is flagged too. That is intentional.
+- `adjustment_mismatch` — a listed split is still visible in the adjusted series, split-adjusted closes do not rebuild from unadjusted closes and the listed splits (Massive, 2% tolerance), or a dividend-adjusted series (yfinance) still contains the dividend drop.
+- `unexplained_gap` — adjusted close-to-close move of 40% or more, and no listed split or cash dividend accounts for it. A 39% move is not this flag.
+
+Massive dividends used for this check come from `/stocks/v1/dividends`. They are not the ex-div calendar. The ex-div calendar is Finnhub only.
+
+### Earnings and ex-div
+
+This layer does not decide blackout or warn-versus-block.
+
+- Earnings: T is `EarningsEvent.report_date`. When `earnings.strict` is true (the default), black out NYSE sessions from T minus `blackout_before_days` (2) through T plus `blackout_after_days` (1). Use `NyseCalendar`, not calendar-day arithmetic. `hour` tells you whether the print is before the open (`bmo`) or after the close (`amc`).
+- Ex-div: yield is `amount / prior adjusted close`. `exdiv.strict` false (default) means an ordinary ex-div warns (`WARN_EXDIV`). Yield at or above `exdiv.block_yield_gte` (0.01) still blocks. `strict = true` blocks the ex-div window.
+- `events_known` is false when the Finnhub call did not succeed. An empty `earnings` or `dividends` tuple in that case means unknown, not "no event". Do not treat it as a clear calendar. Strict earnings with an unknown calendar should not become `ENTER_LONG`.
+
+Finnhub window requested: 30 calendar days back through 180 calendar days forward, America/New_York. The free earnings calendar may return a shorter slice. We do not invent dates to fill it.
+
+`/stock/dividend` is the cash-dividend endpoint (ex-date in `date`, cash per share in `amount`). Finnhub marks that route premium. A free key can come back as `vendor_error:finnhub:...` with `events_known` false. Do not synthesize dividends.
+
+### Calendar
+
+`market.next_open` is the next open after "now". For another timestamp, `NyseCalendar().next_open(after_iso)`. Naive timestamps are read as New York. Exactly 09:30 returns the following session. July 3 2026 (observed Independence Day) is closed. November 28 2025 opens at 09:30 and closes at 13:00.
+
+### Keys
+
+| Key | Role |
+|---|---|
+| `CONTEXT_DEV_API_KEY` | Optional news. Not bars. Not checklist math |
+| `CONTEXT_DEV_BASE_URL` | Default `https://api.context.dev/v1` |
+| `SWING_DATA_DIR` | Data root. Also `config.toml` discovery |
+| `FINNHUB_API_KEY` | Earnings and dividends only. Never bars |
+| `MASSIVE_API_KEY` | Bars only when `bars_provider` is `massive`. Header `Authorization: Bearer`. Not placed in the URL |
+| `SWING_BARS_PROVIDER` | `yfinance` or `massive` |
+| `SWING_CONFIG` | TOML path |
+
+Missing `MASSIVE_API_KEY` or `FINNHUB_API_KEY` raises `MissingApiKeyError` from the provider and is stored on the bundle. Import and `swing analyze --help` do not need the keys. `swing analyze TICKER` still prints an envelope and exits 0.
+
+Massive routes: `GET /v2/aggs/ticker/{ticker}/range/1/day/{from}/{to}`, `GET /stocks/v1/splits`, `GET /stocks/v1/dividends`, host `https://api.massive.com`.
+
+## What is still stubbed
 
 | Piece | Where | Behavior now |
 |---|---|---|
-| Bars | `UnimplementedBars` | Raises |
-| Finnhub events | `UnimplementedEvents` | Raises |
-| NYSE calendar | `UnimplementedCalendar` | Raises |
-| Checklist | `StubBrain` | `NO_TRADE`, every gate `not_run` |
-| Text/JSON polish, Cairo clock | `output/render.py` | Disclaimer, hash, gates. Chat 4 |
+| Checklist | `StubBrain` | `NO_TRADE`, every gate `not_run`. Replace this |
+| Text/JSON polish, Cairo clock | `output/render.py` | Disclaimer, hash, gates, a one-line data summary. Chat 4 |
 | Paper JSONL | `journal/paper.py` | Raises. Chat 5 |
 | IBKR | `broker/ibkr.py` | Raises. Stays unwired |
 
-`analyze()` does not call the data ports. After your providers exist, you may attach a data section, but the decision stays `NO_TRADE` until Chat 3 replaces `StubBrain`. Do not compute RSI, ATR, or position size.
+`analyze` copies `ChecklistResult.confidence`, `side`, and `plan` onto the envelope. Set those on the result when you emit `ENTER_LONG` (`confidence="checklist_only"`, `side="long"`, and a plan). Do not hardcode them in the orchestrator. There is no `ENTER_SHORT`.
 
-## Exact next steps
+Widen `Envelope.stage` when you leave the stub. Do not flip it to look finished while gates are still `not_run`.
 
-1. Add dependencies with uv and commit `uv.lock`. Expected: `yfinance` for the prototype, `pyarrow` for Parquet. Add an HTTP client only if the stdlib client in `research/context_client.py` is a poor fit for Massive. Keep the CLI installable with `uv sync` on macOS (arm64 and x86_64).
-2. Implement `BarProvider.fetch_daily(ticker, lookback_sessions)` twice:
-   - `yfinance` when `data.bars_provider` is `yfinance` (the default).
-   - Massive Basic when it is `massive`, using `MASSIVE_API_KEY`.
-   - `SWING_BARS_PROVIDER` already overrides the config key in `load_config`.
-   - Reject any attempt to select Finnhub as a bars provider. The schema already does this. Do not add a candle call.
-3. Cache daily bars as Parquet under `bars_cache_dir()` (`~/Library/Application Support/swing/cache/bars` on macOS). Store split-adjusted OHLC used for indicators, and keep a `corp_action_suspect` flag when a split or adjustment looks inconsistent (missing split, adjustment that does not match the vendor’s own unadjusted series, or a gap that is not explained by a known action). Chat 3 must be able to refuse a suspect series.
-4. Implement `EventProvider` with Finnhub only (`FINNHUB_API_KEY`): earnings calendar and dividend calendar. Map them so Chat 3 can apply earnings blackout T−2 through T+1 when `earnings.strict` is true (it defaults true), and ex-div warn versus block from `exdiv.strict` (default false) and `exdiv.block_yield_gte` (default 0.01).
-5. Implement `CalendarProvider.next_open`. Use the NYSE calendar, including holidays and early closes. Return an ISO timestamp in `America/New_York`. Do not use “tomorrow weekday” as the calendar.
-6. Tests use fixtures and recorded responses. Do not require network in `uv run pytest`. A missing `FINNHUB_API_KEY` or `MASSIVE_API_KEY` returns a typed data error and does not crash import or `swing analyze --help`.
-7. Leave `ChecklistBrain` free of HTTP clients. Pass bars into the brain only through a data object Chat 3 can accept. Do not pass `ResearchResult` into indicator code.
-
-## Env keys
-
-| Key | Chat | Notes |
-|---|---|---|
-| `CONTEXT_DEV_API_KEY` | done (optional) | News enrichment only. Not bars |
-| `CONTEXT_DEV_BASE_URL` | done (optional) | Default `https://api.context.dev/v1`. Non-https URLs (except localhost) are refused and do not send the key |
-| `SWING_DATA_DIR` | done | Overrides the data root and, when `config.toml` sits in that directory, config discovery |
-| `FINNHUB_API_KEY` | you | Events and calendars only |
-| `MASSIVE_API_KEY` | you | Bars when provider is `massive`. Pay Massive Starter (~$29) only when Basic rate or history limits hurt. That is a billing choice, not a code default |
-| `SWING_BARS_PROVIDER` | done | `yfinance` or `massive` |
-| `SWING_CONFIG` | done | TOML path. Wins over `SWING_DATA_DIR/config.toml` |
-
-No key is required to run the skeleton.
+`account.equity_usd` is null until Ziad sets it. Sizing cannot be correct without it. Do not invent an equity number.
 
 ## Do not change
 
-- Hash algorithm in `src/swing/hashing.py`
+- Hash algorithm in `src/swing/hashing.py`. Chat 2 added no `SwingConfig` field, so the hash is unchanged
 - Mutex order `BO_RVOL` > `PB_EMA` > `RSI2_MR`
 - Default risk `0.01`, heat `0.06` / `0.03`, max positions `4`, RSI max `10`, SPY R² warn at `0.70` / 60 sessions
 - `research.affects_checklist_math = false`
 - `shariah.screen_in_v0 = false`
 - Disclaimer text, except to extend it if a new claim needs a denial
-- Time-stops. Research sketched 5 / 15 / 20 sessions and Ziad did not lock them. Leave them out of config
-
-If you add a field to `SwingConfig`, the config hash changes for every user. Do that only for real policy, and say so in your handover.
+- Time-stops. They are not in config
+- `IbkrBrokerStub` must keep raising
 
 ## Known risks
 
-- Verified on Linux in the agent VM. macOS paths are covered by unit tests (`tests/test_paths.py`), not by a run on a Mac.
-- yfinance is an unofficial prototype and can break without notice. Massive is the intended bars vendor when limits hurt.
-- Finnhub candle endpoints are the easy mistake. They are out of policy.
-- Context search costs credits and can take the full 8 second timeout. Failure is `WARN_RESEARCH_ERROR`, not a crash. Headlines are not deterministic, so they stay off the checklist.
-- `account.equity_usd` is null until Ziad sets it. Sizing cannot be correct without it. Do not invent an equity number.
-- A high SPY R² is a warning, never a hard block.
+- Verified on Linux. macOS paths are unit-tested, not run on a Mac. `uv.lock` pins macOS wheels for pyarrow, numpy, and the rest.
+- yfinance is an unofficial prototype. Massive is the bars vendor when Basic limits hurt (about two years of daily aggregates on the basic plan). Paying for Starter is a billing choice, not a code default.
+- Finnhub candle endpoints are out of policy. The events module does not call them.
+- Context search stays fail-soft and off the checklist. `WARN_NEWS` is still reserved for a soft note after numbers are fixed.
+- A suspect series includes some real 50% crashes. Refusing them is the safe default.
 - Inverse-ETF short proxies are not detected. Do not add a block list that pretends to be a Shariah ruling.
-- `IbkrBrokerStub` must keep raising. No live orders.
-- The envelope can represent `ENTER_LONG` only with `confidence: "checklist_only"`, `side: "long"`, and a plan. The skeleton never emits that decision. Do not emit it from the data layer.

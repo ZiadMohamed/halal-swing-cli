@@ -34,6 +34,6 @@ Live web search sits beside the brain, not inside it. Context.dev (`POST /web/se
 ## Consequences
 
 - macOS is the documented install path. Linux is a fallback for CI and this cloud agent, and path code says so.
-- Chat 2 adds data dependencies (`yfinance`, `pyarrow`) in its own change. Chat 1 does not fetch bars.
+- Chat 2 added `yfinance`, `pyarrow`, and `exchange-calendars`. Massive and Finnhub use the stdlib HTTP client.
 - Config hash changes if a later chat changes a hashed field. New policy belongs in `SwingConfig` on purpose, not in ad-hoc constants.
 - `research.affects_checklist_math` is fixed `false`. News text cannot move entry, stop, target, size, or next_open.

@@ -9,6 +9,7 @@ from typing import Literal
 from swing.brain.gates import PIPELINE_GATES
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
+from swing.data.models import MarketData
 from swing.envelope import GateView, Plan, Reason
 
 
@@ -24,10 +25,14 @@ class ChecklistResult:
 
 
 class StubBrain:
-    """Ignores bars. Research is not an argument, on purpose."""
+    """Ignores bars. Research is not an argument, on purpose.
 
-    def evaluate(self, ticker: str, config: SwingConfig) -> ChecklistResult:
-        del ticker, config
+    `market` is accepted so Chat 3 can keep the same call. The stub does not
+    read it and does not emit ENTER_LONG.
+    """
+
+    def evaluate(self, ticker: str, config: SwingConfig, market: MarketData | None = None) -> ChecklistResult:
+        del ticker, config, market
         return ChecklistResult(
             decision=DecisionKind.NO_TRADE,
             reasons=(

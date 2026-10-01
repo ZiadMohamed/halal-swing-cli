@@ -55,6 +55,39 @@ class ResearchView(_Strict):
     affects_checklist_math: Literal[False] = False
 
 
+class EarningsBrief(_Strict):
+    """Announcement date T. Chat 3 applies the blackout. This is not a decision."""
+
+    report_date: str
+    hour: Literal["bmo", "amc", "dmh", "unknown"]
+
+
+class DividendBrief(_Strict):
+    """Ex-dividend cash amount per share. Chat 3 compares it with price."""
+
+    ex_date: str
+    amount: float
+    currency: str
+
+
+class DataView(_Strict):
+    """Summary of the data layer. Full bars stay on MarketData, not in this view."""
+
+    status: Literal["ok", "partial", "error", "not_loaded"] = "not_loaded"
+    bars_provider: str | None = None
+    events_provider: str | None = None
+    bar_count: int = 0
+    first_session: str | None = None
+    last_session: str | None = None
+    corp_action_suspect: bool = False
+    corp_action_reasons: list[str] = Field(default_factory=list)
+    earnings: list[EarningsBrief] = Field(default_factory=list)
+    dividends: list[DividendBrief] = Field(default_factory=list)
+    next_open: str | None = None
+    errors: list[str] = Field(default_factory=list)
+    events_known: bool = False
+
+
 class Envelope(_Strict):
     schema_version: Literal["1.1.0"] = "1.1.0"
     ticker: str
@@ -66,6 +99,7 @@ class Envelope(_Strict):
     plan: Plan | None
     shariah: ShariahView
     research: ResearchView
+    data: DataView = Field(default_factory=DataView)
     disclaimer: str
     config_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     compact: bool

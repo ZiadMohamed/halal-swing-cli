@@ -8,7 +8,7 @@ Cash account, long equity only. No shorts, no conventional margin, no options, C
 
 Every future `ENTER_LONG` stamps `confidence: "checklist_only"`. That means the predetermined rules matched. It is not a claim of edge.
 
-Chat 1 is the skeleton. `swing analyze` runs, prints the disclaimer and a config hash, and returns `NO_TRADE` because bars and the checklist brain are not installed yet.
+`swing analyze` runs, prints the disclaimer and a config hash, and returns `NO_TRADE` until the checklist brain is installed. Bars, Finnhub calendars, and the NYSE clock are already attached on the envelope. They do not produce an entry.
 
 ## macOS setup
 
@@ -36,7 +36,7 @@ Config and data on macOS live under:
 | Path | Use |
 |---|---|
 | `config.toml` | Optional. Copy `config/swing.example.toml` |
-| `cache/bars/` | Parquet bars (Chat 2, not written yet) |
+| `cache/bars/` | Parquet daily bars. Split-adjusted OHLC plus a corp-action suspect flag |
 | `journal.jsonl` | Paper journal (Chat 5, not written yet) |
 
 A `swing.toml` in the current directory is also read, and it is gitignored so account size does not get committed. `SWING_CONFIG` or `--config` overrides discovery.
@@ -45,7 +45,7 @@ Linux is a fallback for CI and agents only. On Linux the data root is `$XDG_DATA
 
 ## What the skeleton prints
 
-`swing analyze AAPL` prints `NO_TRADE`, reason `PIPELINE_NOT_IMPLEMENTED`, the disclaimer, and `config_hash`. `--compact` is off unless you pass it. `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout.
+`swing analyze AAPL` prints `NO_TRADE`, reason `PIPELINE_NOT_IMPLEMENTED`, the disclaimer, and `config_hash`. The JSON envelope includes a `data` section (bar count, suspect flag, earnings dates, dividend amounts, next NYSE open). That section does not change the decision. `--compact` is off unless you pass it. `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout.
 
 Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, or a missing config path.
 
@@ -57,8 +57,8 @@ None are required for the skeleton.
 |---|---|---|
 | `CONTEXT_DEV_API_KEY` | no | Live news search at analyze time. Bearer token for `POST /web/search`. Not an OHLC source. |
 | `CONTEXT_DEV_BASE_URL` | no | Default `https://api.context.dev/v1`. `https` only, except `http` on localhost |
-| `FINNHUB_API_KEY` | Chat 2 | Earnings and dividend calendars only. Never bars. |
-| `MASSIVE_API_KEY` | Chat 2 | Bars when `bars_provider` is `massive` |
+| `FINNHUB_API_KEY` | no | Earnings and dividend calendars only. Never bars. Missing key is a typed data error, not a crash |
+| `MASSIVE_API_KEY` | only if `bars_provider` is `massive` | Bars from Massive Basic. Sent as `Authorization: Bearer`, not in the URL |
 | `SWING_BARS_PROVIDER` | no | `yfinance` (default) or `massive` |
 | `SWING_CONFIG` | no | TOML file path |
 | `SWING_DATA_DIR` | no | Overrides the data root. If `config.toml` is inside it, that file is used unless `--config` or `SWING_CONFIG` is set |
@@ -92,4 +92,4 @@ uv run pytest
 
 Architecture and the decision to stay on Python + uv: [docs/architecture.md](docs/architecture.md), [docs/adr/0001-python-uv-and-boundaries.md](docs/adr/0001-python-uv-and-boundaries.md).
 
-Next milestone (bars, Finnhub events, Parquet, NYSE calendar): [HANDOVER.md](HANDOVER.md).
+Next milestone (checklist brain): [HANDOVER.md](HANDOVER.md).

@@ -1,6 +1,7 @@
-"""Data ports for Chat 2.
+"""Data ports.
 
 Finnhub implements EventProvider only. Bars come from yfinance or Massive.
+Concrete types live in swing.data.models. Chat 3 should read MarketData.
 """
 
 from __future__ import annotations

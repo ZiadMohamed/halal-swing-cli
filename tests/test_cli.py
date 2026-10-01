@@ -3,9 +3,19 @@
 import json
 import subprocess
 import sys
+from datetime import date
+
+import pytest
 
 from swing.cli import main
+from swing.data.models import BarSeries, DailyBar, MarketData
 from swing.disclaimer import DISCLAIMER
+
+
+@pytest.fixture(autouse=True)
+def _offline_market(monkeypatch):
+    """CLI tests must not call yfinance or Finnhub."""
+    monkeypatch.setattr("swing.analyze.load_market_data", lambda *args, **kwargs: None)
 
 
 def test_analyze_help_exits_zero(capsys):
@@ -84,6 +94,50 @@ def test_verbose_logs_do_not_pollute_json_stdout(capsys, monkeypatch):
     assert code == 0
     out = capsys.readouterr().out
     json.loads(out)
+
+
+def test_attached_market_data_stays_no_trade(capsys, monkeypatch):
+    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
+    market = MarketData(
+        ticker="AAPL",
+        status="ok",
+        bars_provider="yfinance",
+        events_provider="finnhub",
+        bars=BarSeries(
+            ticker="AAPL",
+            provider="yfinance",
+            bars=(
+                DailyBar(
+                    session=date(2026, 9, 30),
+                    open=1,
+                    high=1,
+                    low=1,
+                    close=1,
+                    volume=1,
+                    raw_close=1,
+                ),
+            ),
+            corp_action_suspect=False,
+            corp_action_reasons=(),
+            adjustment="split_and_dividend",
+        ),
+        earnings=(),
+        dividends=(),
+        next_open="2026-10-02T09:30:00-04:00",
+        errors=(),
+    )
+    monkeypatch.setattr("swing.analyze.load_market_data", lambda *args, **kwargs: market)
+    code = main(["analyze", "AAPL", "--json"])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["decision"] == "NO_TRADE"
+    assert payload["plan"] is None
+    assert payload["data"]["status"] == "ok"
+    assert payload["data"]["bar_count"] == 1
+    assert payload["data"]["corp_action_suspect"] is False
+    assert payload["data"]["next_open"] == "2026-10-02T09:30:00-04:00"
+    assert "ENTER_SHORT" not in json.dumps(payload)
+    assert payload["confidence"] is None
 
 
 def test_bad_ticker_exits_2(capsys):
