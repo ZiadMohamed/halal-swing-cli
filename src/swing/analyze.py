@@ -1,4 +1,4 @@
-"""Orchestrate guards, the checklist stub, and advisory research."""
+"""Orchestrate guards, the checklist brain, and advisory research."""
 
 from __future__ import annotations
 
@@ -7,12 +7,14 @@ import re
 from collections.abc import Mapping
 from typing import Literal
 
+from swing.brain.checklist import ChecklistBrain
 from swing.brain.gates import PIPELINE_GATES
-from swing.brain.stub import StubBrain
+from swing.brain.positions import OpenPosition
+from swing.brain.stub import ChecklistResult
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig, load_config
 from swing.data.factory import load_market_data
-from swing.data.models import MarketData
+from swing.data.models import BarSeries, MarketData
 from swing.disclaimer import DISCLAIMER, SHARIAH_NOTE
 from swing.envelope import (
     DataView,
@@ -53,9 +55,12 @@ def analyze(
     env: Mapping[str, str] | None = None,
     research_result: ResearchResult | None = None,
     compact: bool = False,
-    brain: StubBrain | None = None,
+    brain: object | None = None,
     market: MarketData | None = None,
     fetch_market: bool = False,
+    spy_bars: BarSeries | None = None,
+    positions: tuple[OpenPosition, ...] = (),
+    sector: str | None = None,
 ) -> Envelope:
     symbol = normalize_ticker(ticker)
     cfg = config if config is not None else load_config(env=env if env is not None else None)
@@ -82,7 +87,17 @@ def analyze(
         )
     if market is None and fetch_market:
         market = load_market_data(symbol, cfg, env=env)
-    checklist = _evaluate(brain or StubBrain(), symbol, cfg, market)
+    if spy_bars is None and fetch_market and market is not None and market.bars is not None:
+        if not market.bars.corp_action_suspect:
+            spy_market = load_market_data(
+                "SPY",
+                cfg,
+                env=env,
+                lookback_sessions=cfg.spy_r2.lookback_days,
+            )
+            if spy_market is not None and spy_market.bars is not None and not spy_market.bars.corp_action_suspect:
+                spy_bars = spy_market.bars
+    checklist = _evaluate(brain or ChecklistBrain(), symbol, cfg, market, spy_bars, positions, sector)
     if research_result is None:
         research_result = build_live_research(cfg, env=env).enrich(symbol)
     warnings = list(checklist.warnings)
@@ -103,12 +118,37 @@ def analyze(
     )
 
 
-def _evaluate(brain: StubBrain, ticker: str, config: SwingConfig, market: MarketData | None):
-    """Pass bars only when the brain accepts `market`. Never pass research."""
-    parameters = inspect.signature(brain.evaluate).parameters
+def _evaluate(
+    brain: object,
+    ticker: str,
+    config: SwingConfig,
+    market: MarketData | None,
+    spy_bars: BarSeries | None,
+    positions: tuple[OpenPosition, ...],
+    sector: str | None,
+) -> ChecklistResult:
+    """Pass bars only when the brain accepts them. Never pass research."""
+    evaluate = brain.evaluate  # type: ignore[attr-defined]
+    parameters = inspect.signature(evaluate).parameters
+    kwargs: dict[str, object] = {}
     if "market" in parameters:
-        return brain.evaluate(ticker, config, market=market)
-    return brain.evaluate(ticker, config)
+        kwargs["market"] = market
+    if "spy_bars" in parameters:
+        kwargs["spy_bars"] = spy_bars
+    if "positions" in parameters:
+        kwargs["positions"] = positions
+    if "sector" in parameters:
+        kwargs["sector"] = sector
+    return evaluate(ticker, config, **kwargs)
+
+
+def _stage(gates: list[GateView]) -> Literal["skeleton", "partial", "checklist"]:
+    statuses = [gate.status for gate in gates]
+    if all(status == "not_run" for status in statuses):
+        return "skeleton"
+    if any(status == "not_run" for status in statuses):
+        return "partial"
+    return "checklist"
 
 
 def _gates_or_pending(gates: tuple[GateView, ...] | None) -> list[GateView]:
@@ -193,5 +233,5 @@ def _envelope(
         config_hash=config.config_hash(),
         compact=compact,
         gates=_gates_or_pending(gates),
-        stage="skeleton",
+        stage=_stage(_gates_or_pending(gates)),
     )

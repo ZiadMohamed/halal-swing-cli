@@ -28,7 +28,7 @@ def _note(**kwargs) -> ResearchResult:
     return ResearchResult(**base)
 
 
-def test_stub_analyze_envelope_without_a_context_key():
+def test_analyze_without_bars_is_no_trade_and_does_not_need_a_context_key():
     env = analyze("aapl", env={})
     assert env.ticker == "AAPL"
     assert env.schema_version == "1.1.0"
@@ -36,8 +36,8 @@ def test_stub_analyze_envelope_without_a_context_key():
     assert env.confidence is None
     assert env.side is None
     assert env.plan is None
-    assert env.stage == "skeleton"
-    assert [reason.code for reason in env.reasons] == [ReasonCode.PIPELINE_NOT_IMPLEMENTED]
+    assert env.stage == "partial"
+    assert [reason.code for reason in env.reasons] == [ReasonCode.NO_MARKET_DATA]
     assert any(warning.code is ReasonCode.WARN_RESEARCH_UNAVAILABLE for warning in env.warnings)
     assert DISCLAIMER in env.disclaimer
     assert "Not financial advice" in env.disclaimer
@@ -49,7 +49,8 @@ def test_stub_analyze_envelope_without_a_context_key():
     assert env.research.status == "skipped"
     assert env.research.affects_checklist_math is False
     assert [gate.name for gate in env.gates] == list(PIPELINE_GATES)
-    assert all(gate.status == "not_run" for gate in env.gates)
+    assert env.gates[0].status == "no_trade"
+    assert all(gate.status == "not_run" for gate in env.gates[1:])
     emitted = {item.code for item in (*env.reasons, *env.warnings)}
     assert emitted.isdisjoint(SHARIAH_REASON_CODES)
 
@@ -84,7 +85,7 @@ def test_insecure_research_url_warns_and_keeps_the_checklist():
         env={"CONTEXT_DEV_API_KEY": "ctxt_secret", "CONTEXT_DEV_BASE_URL": "http://evil.example/v1"},
     )
     assert env.decision is DecisionKind.NO_TRADE
-    assert env.reasons[0].code is ReasonCode.PIPELINE_NOT_IMPLEMENTED
+    assert env.reasons[0].code is ReasonCode.NO_MARKET_DATA
     assert any(warning.code is ReasonCode.WARN_RESEARCH_ERROR for warning in env.warnings)
     assert env.research.reason == "insecure_base_url"
     assert env.plan is None

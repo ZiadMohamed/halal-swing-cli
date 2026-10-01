@@ -1,4 +1,8 @@
-"""Checklist stand-in until Chat 3. It never emits ENTER_LONG."""
+"""Shared checklist result, plus a no-op brain that never emits ENTER_LONG.
+
+`analyze` uses `ChecklistBrain`. `StubBrain` remains so a caller can force the
+old all-gates-not-run result. It does not read `market`.
+"""
 
 from __future__ import annotations
 

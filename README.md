@@ -8,7 +8,7 @@ Cash account, long equity only. No shorts, no conventional margin, no options, C
 
 Every future `ENTER_LONG` stamps `confidence: "checklist_only"`. That means the predetermined rules matched. It is not a claim of edge.
 
-`swing analyze` runs, prints the disclaimer and a config hash, and returns `NO_TRADE` until the checklist brain is installed. Bars, Finnhub calendars, and the NYSE clock are already attached on the envelope. They do not produce an entry.
+`swing analyze` runs the checklist brain. A match can print `ENTER_LONG` with entry, stop, target, size, and the next NYSE open. Anything else stays `NO_TRADE` or `BLOCK`, with the disclaimer and config hash on every envelope. Set `account.equity_usd` or size is refused. The open-position book is not read yet, so heat on the command line only sees this trade.
 
 ## macOS setup
 
@@ -43,9 +43,9 @@ A `swing.toml` in the current directory is also read, and it is gitignored so ac
 
 Linux is a fallback for CI and agents only. On Linux the data root is `$XDG_DATA_HOME/swing` or `~/.local/share/swing`. Do not treat that layout as the supported install.
 
-## What the skeleton prints
+## What analyze prints
 
-`swing analyze AAPL` prints `NO_TRADE`, reason `PIPELINE_NOT_IMPLEMENTED`, the disclaimer, and `config_hash`. The JSON envelope includes a `data` section (bar count, suspect flag, earnings dates, dividend amounts, next NYSE open). That section does not change the decision. `--compact` is off unless you pass it. `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout.
+`swing analyze AAPL` prints one envelope. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, and the others in `HANDOVER.md`). The JSON envelope includes the plan when the decision is `ENTER_LONG`, a `data` section (bar count, suspect flag, earnings dates, dividend amounts, next NYSE open), and `stage` (`skeleton`, `partial`, or `checklist`). `--compact` is off unless you pass it. `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. The text view still says the brain has not run; Chat 4 replaces that line.
 
 Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, or a missing config path.
 
@@ -92,4 +92,4 @@ uv run pytest
 
 Architecture and the decision to stay on Python + uv: [docs/architecture.md](docs/architecture.md), [docs/adr/0001-python-uv-and-boundaries.md](docs/adr/0001-python-uv-and-boundaries.md).
 
-Next milestone (checklist brain): [HANDOVER.md](HANDOVER.md).
+Next milestone (terminal output): [HANDOVER.md](HANDOVER.md).

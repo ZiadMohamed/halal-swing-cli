@@ -84,8 +84,8 @@ def test_attached_data_does_not_invent_an_entry():
     assert env.confidence is None
     assert env.side is None
     assert env.plan is None
-    assert env.stage == "skeleton"
-    assert env.reasons[0].code is ReasonCode.PIPELINE_NOT_IMPLEMENTED
+    assert env.stage == "partial"
+    assert env.reasons[0].code is ReasonCode.CORP_ACTION_SUSPECT
     assert env.data.status == "ok"
     assert env.data.bars_provider == "yfinance"
     assert env.data.bar_count == 2

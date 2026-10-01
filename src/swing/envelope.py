@@ -30,6 +30,7 @@ class Plan(_Strict):
     target: float
     size_shares: int = Field(ge=0)
     next_open: str
+    setup: Literal["BO_RVOL", "PB_EMA", "RSI2_MR"] | None = None
 
 
 class ShariahView(_Strict):
@@ -104,7 +105,7 @@ class Envelope(_Strict):
     config_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     compact: bool
     gates: list[GateView]
-    stage: Literal["skeleton"] = "skeleton"
+    stage: Literal["skeleton", "partial", "checklist"] = "skeleton"
 
     @model_validator(mode="after")
     def _enter_rules(self) -> Envelope:

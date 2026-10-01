@@ -14,7 +14,7 @@ The predetermined checklist (research round 10, prefs 1–12 locked 2026-10-01) 
 - disclaimer
 - `config_hash`
 
-Chat 1 always returns `NO_TRADE` / `PIPELINE_NOT_IMPLEMENTED` after the product guards, because the data layer and the brain are stubs. The command still returns a real envelope so later chats can fill fields without changing the CLI shape.
+Product guards still return `BLOCK` before the brain. With bars loaded, the checklist brain returns `ENTER_LONG`, `NO_TRADE`, or stops on a gate. `PIPELINE_NOT_IMPLEMENTED` remains only if something still calls `StubBrain`. The command returns a real envelope either way.
 
 There is no `ENTER_SHORT`. Short, margin, and derivative intents stop at `BLOCK_SHORT`, `BLOCK_MARGIN`, or `BLOCK_DERIVATIVE`.
 
@@ -69,7 +69,7 @@ Rules:
 - A future deterministic halt or earnings blackout may still `NO_TRADE`. That input comes from data ports, not from a headline.
 - `config_hash` covers policy only. It does not cover headlines, clock time, or home-directory paths.
 
-`confidence` is `checklist_only` on `ENTER_LONG` and absent otherwise. The skeleton never emits `ENTER_LONG`.
+`confidence` is `checklist_only` on `ENTER_LONG` and absent otherwise. `ENTER_LONG` also requires `side="long"` and a plan.
 
 ## Config
 
@@ -174,7 +174,7 @@ Data and config root on macOS:
 
 **Chat 2 — Data.** Done. `load_market_data` returns `MarketData`: split-adjusted bars (yfinance or Massive), a `corp_action_suspect` flag, Finnhub earnings and dividend events, and `next_open` from the NYSE calendar. Parquet lives under `bars_cache_dir()`. The analyze envelope copies a summary onto `data` and still returns `NO_TRADE` while the brain is the stub. Finnhub does not serve OHLC. See `HANDOVER.md` for the fields Chat 3 reads.
 
-**Chat 3 — Brain.** Replace `StubBrain`. Walk `PIPELINE_GATES` in order: data/auth, liquidity, soft-veto, earnings, regime, heat, ADR, setup mutex, RR/stop, next_open. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. High SPY R² is `WARN_SPY_R2` only. Earnings strict blackout is `NO_TRADE`. Stamp `confidence: checklist_only` on enter. Do not pass `LiveResearch` into indicator functions. Soft news, if used at all, appends `WARN_NEWS` after numbers are fixed.
+**Chat 3 — Brain.** Done. `ChecklistBrain` walks `PIPELINE_GATES` in order. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. High SPY R² is `WARN_SPY_R2` only. Earnings strict blackout is `NO_TRADE`. `confidence` is `checklist_only` on enter. Research is not an argument. See `HANDOVER.md` for the fields Chat 4 should render. The CLI still assumes an empty open book until Chat 5 passes positions.
 
 **Chat 4 — Output.** Extend `output/render.py`. `--compact` stays default off. Show `next_open` in `America/New_York` and the clock Ziad watches (`Africa/Cairo`). Keep the disclaimer on every view, including compact.
 

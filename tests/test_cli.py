@@ -52,7 +52,7 @@ def test_compact_text_keeps_reason_and_hides_gates(capsys, monkeypatch):
     code = main(["analyze", "AAPL", "--compact"])
     assert code == 0
     text = capsys.readouterr().out
-    assert "PIPELINE_NOT_IMPLEMENTED" in text
+    assert "NO_MARKET_DATA" in text
     assert "missing_api_key" in text
     assert "Not financial advice" in text
     assert "data_auth" not in text

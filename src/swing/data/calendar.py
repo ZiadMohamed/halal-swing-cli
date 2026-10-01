@@ -35,6 +35,42 @@ class NyseCalendar:
                 return opened.isoformat(timespec="seconds")
         raise DataError("no upcoming NYSE open", code="calendar")
 
+    def is_session(self, day: date) -> bool:
+        return bool(self._xnys().is_session(_timestamp(day)))
+
+    def shift_session(self, day: date, offset: int) -> date:
+        """Move `offset` NYSE sessions from `day`.
+
+        Offset 0 returns `day` when it is a session. A positive offset walks
+        forward, a negative offset walks back. Holidays are not sessions.
+        """
+        if offset == 0:
+            if not self.is_session(day):
+                raise DataError(f"{day.isoformat()} is not an NYSE session", code="calendar")
+            return day
+        remaining = abs(offset)
+        window = timedelta(days=remaining * 3 + 21)
+        calendar = self._xnys()
+        if offset > 0:
+            sessions = calendar.sessions_in_range(_timestamp(day), _timestamp(day + window))
+            dates = [session.date() for session in sessions]
+            index = offset if dates and dates[0] == day else offset - 1
+        else:
+            sessions = calendar.sessions_in_range(_timestamp(day - window), _timestamp(day))
+            dates = [session.date() for session in sessions]
+            if dates and dates[-1] == day:
+                index = len(dates) - 1 + offset
+            else:
+                index = len(dates) + offset
+        if not dates or index < 0 or index >= len(dates):
+            raise DataError("no NYSE session at that offset", code="calendar")
+        return dates[index]
+
+    def session_on_or_before(self, day: date) -> date:
+        if self.is_session(day):
+            return day
+        return self.shift_session(day, -1)
+
     def last_completed_session(self, now: datetime) -> date:
         moment = _as_ny(now)
         calendar = self._xnys()

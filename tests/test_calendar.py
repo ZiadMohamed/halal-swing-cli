@@ -1,6 +1,11 @@
 """NYSE next open, including holidays and early-close sessions."""
 
+from datetime import date
+
+import pytest
+
 from swing.data.calendar import NyseCalendar
+from swing.data.errors import DataError
 
 
 def test_next_open_skips_the_weekend():
@@ -27,6 +32,21 @@ def test_exactly_at_the_open_returns_the_following_session():
 
 def test_new_year_holiday_is_skipped():
     assert NyseCalendar().next_open("2025-12-31T16:00:00-05:00") == "2026-01-02T09:30:00-05:00"
+
+
+def test_session_shift_skips_the_observed_independence_day_holiday():
+    calendar = NyseCalendar()
+    assert calendar.is_session(date(2026, 7, 2)) is True
+    assert calendar.is_session(date(2026, 7, 3)) is False
+    assert calendar.shift_session(date(2026, 7, 2), 1) == date(2026, 7, 6)
+    assert calendar.shift_session(date(2026, 7, 6), -2) == date(2026, 7, 1)
+    assert calendar.session_on_or_before(date(2026, 7, 4)) == date(2026, 7, 2)
+    assert calendar.shift_session(date(2026, 7, 6), 0) == date(2026, 7, 6)
+
+
+def test_shift_session_rejects_a_non_session_at_offset_zero():
+    with pytest.raises(DataError):
+        NyseCalendar().shift_session(date(2026, 7, 3), 0)
 
 
 def test_winter_open_uses_eastern_standard_time():
