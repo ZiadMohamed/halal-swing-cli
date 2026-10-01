@@ -30,6 +30,7 @@ def test_analyze_help_exits_zero(capsys):
     assert "Not financial advice" in out
     assert "--compact" in out
     assert "--json" in out
+    assert "--simple" in out
     assert "--sector" in out
 
 

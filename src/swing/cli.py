@@ -13,11 +13,13 @@ from pydantic import ValidationError
 from swing import __version__
 from swing.analyze import analyze
 from swing.config import load_config
+from swing.envfile import load_project_env
 from swing.journal.paper import PaperJournal
-from swing.output.render import render_json, render_text
+from swing.output.render import render_json, render_simple, render_text
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_project_env()
     parser = _parser()
     args = parser.parse_args(argv)
     if args.command != "analyze":
@@ -44,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.json:
         sys.stdout.write(render_json(envelope))
+    elif args.simple:
+        sys.stdout.write(render_simple(envelope))
     else:
         sys.stdout.write(
             render_text(
@@ -79,6 +83,11 @@ def _parser() -> argparse.ArgumentParser:
         "--compact",
         action="store_true",
         help="Shorter text. Default off. Still prints the disclaimer.",
+    )
+    analyze_parser.add_argument(
+        "--simple",
+        action="store_true",
+        help="Minimal human text. Default stays verbose. Ignored when --json is set.",
     )
     analyze_parser.add_argument("--config", type=Path, help="TOML config file. Overrides discovery.")
     analyze_parser.add_argument(

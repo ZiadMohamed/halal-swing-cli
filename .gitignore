@@ -9,3 +9,4 @@ build/
 swing.toml
 .env
 .env.*
+!.env.example

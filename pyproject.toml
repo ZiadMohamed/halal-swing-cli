@@ -10,6 +10,7 @@ dependencies = [
     "exchange-calendars>=4.13.2",
     "pyarrow>=25.0.1",
     "pydantic>=2.6,<3",
+    "python-dotenv>=1.2.3",
     "yfinance>=1.7.0",
 ]
 

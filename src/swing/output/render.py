@@ -6,9 +6,9 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from swing.codes import DecisionKind
+from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
-from swing.envelope import Envelope, Plan
+from swing.envelope import Envelope, Plan, Reason
 from swing.output.instructions import build_instructions, compact_buy, compact_sell
 
 _DEFAULT_USER_TZ = "Africa/Cairo"
@@ -138,6 +138,87 @@ def _format_stamp(raw: str, *, user_tz: str, market_tz: str, compact: bool) -> l
         f"next_open {market_tz} {market}",
         f"next_open {user_tz} {user}",
     ]
+
+
+_PLAIN: dict[ReasonCode, str] = {
+    ReasonCode.PIPELINE_NOT_IMPLEMENTED: "checklist is not installed yet",
+    ReasonCode.NO_MARKET_DATA: "no price bars are loaded",
+    ReasonCode.CORP_ACTION_SUSPECT: "the price series looks wrong after a corporate action",
+    ReasonCode.ILLIQUID: "the name is too illiquid",
+    ReasonCode.EXDIV_BLOCK: "the ex-dividend yield blocks the entry",
+    ReasonCode.EARNINGS_UNKNOWN: "earnings calendar unknown",
+    ReasonCode.EARNINGS_BLACKOUT: "earnings blackout",
+    ReasonCode.EQUITY_UNSET: "account equity is unset (pass --equity USD)",
+    ReasonCode.HEAT_LIMIT: "portfolio heat would be too high",
+    ReasonCode.MAX_POSITIONS: "too many positions are already open",
+    ReasonCode.ADR_TOO_QUIET: "the daily range is too quiet",
+    ReasonCode.NO_SETUP: "no setup matched",
+    ReasonCode.INVALID_STOP: "the stop would not sit below the entry",
+    ReasonCode.SIZE_BELOW_ONE_SHARE: "1% of equity does not buy one share",
+    ReasonCode.NO_NEXT_OPEN: "the next NYSE open is unknown",
+    ReasonCode.SETUP_SUPPRESSED: "the setup was suppressed",
+    ReasonCode.BLOCK_SHORT: "shorts are not allowed",
+    ReasonCode.BLOCK_MARGIN: "margin accounts are blocked",
+    ReasonCode.BLOCK_DERIVATIVE: "options, CFDs, and futures are blocked",
+    ReasonCode.BLOCK_SHARIAH_SCREEN: "no Shariah screen result",
+    ReasonCode.BLOCK_SHARIAH_SECTOR: "sector is outside your screen",
+    ReasonCode.BLOCK_SHARIAH_DATA: "Shariah data is missing",
+    ReasonCode.BLOCK_SHARIAH_QUESTIONABLE: "the name is questionable on your screen",
+    ReasonCode.BLOCK_SHARIAH_OVERRIDE_DENIED: "the Shariah override was denied",
+}
+
+_FINNHUB_UNKNOWN = "earnings calendar unknown (set FINNHUB_API_KEY)"
+
+
+def render_simple(envelope: Envelope) -> str:
+    """Short card. No gate list, no config hash, no long disclaimer.
+
+    `--json` does not use this view. The default text view stays verbose.
+    """
+    plan = envelope.plan
+    if envelope.decision is DecisionKind.ENTER_LONG and plan is not None:
+        noun = "share" if plan.size_shares == 1 else "shares"
+        lines = [
+            (
+                f"BUY {plan.size_shares} {noun} of {envelope.ticker} at next NYSE open "
+                f"(planned entry ${plan.entry:,.2f} USD)"
+            ),
+            f"SELL stop ${plan.stop:,.2f} USD  OR  target ${plan.target:,.2f} USD",
+            "Place manually in IBKR. Not advice.",
+        ]
+        return "\n".join(lines) + "\n"
+    label = "NO TRADE" if envelope.decision is DecisionKind.NO_TRADE else "BLOCK"
+    return f"{label} — {_plain_reason(envelope)}\n"
+
+
+def _plain_reason(envelope: Envelope) -> str:
+    errors = set(envelope.data.errors)
+    primary = envelope.reasons[0] if envelope.reasons else None
+    if primary is not None and primary.code is ReasonCode.EARNINGS_UNKNOWN:
+        if "missing_api_key:FINNHUB_API_KEY" in errors:
+            return _FINNHUB_UNKNOWN
+        return _PLAIN[ReasonCode.EARNINGS_UNKNOWN]
+    if "missing_api_key:FINNHUB_API_KEY" in errors and _calendar_unknown(primary):
+        return _FINNHUB_UNKNOWN
+    if primary is not None:
+        mapped = _PLAIN.get(primary.code)
+        if mapped is not None:
+            return mapped
+        return " ".join(primary.message.split())
+    if "missing_api_key:FINNHUB_API_KEY" in errors:
+        return _FINNHUB_UNKNOWN
+    if "missing_api_key:MASSIVE_API_KEY" in errors:
+        return "price bars unavailable (set MASSIVE_API_KEY)"
+    return "no reason recorded"
+
+
+def _calendar_unknown(primary: Reason | None) -> bool:
+    if primary is None:
+        return True
+    if primary.code is ReasonCode.EARNINGS_BLACKOUT:
+        return False
+    text = primary.message.lower()
+    return "earnings" in text and "unknown" in text
 
 
 def _parse_instant(raw: str, market_tz: str) -> datetime:

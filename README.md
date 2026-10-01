@@ -27,7 +27,20 @@ uv run swing analyze AAPL
 uv run swing analyze AAPL --json
 uv run swing analyze AAPL --sector Technology
 uv run swing analyze AAPL --equity 10000
+uv run swing analyze AAPL --simple --equity 10000
 ```
+
+Copy the env example and fill in any keys you use. `.env` is gitignored. A checklist run does not require it.
+
+```bash
+cp .env.example .env
+uv run swing analyze AAPL
+uv run swing analyze AAPL --simple
+```
+
+On startup the CLI loads `.env` from the current directory, then `.env` in the swing data directory (`~/Library/Application Support/swing` on macOS) for any variable that is still unset. A variable already exported in the shell is left as-is. Keys are not written into config, logs, or `config_hash`.
+
+`--simple` prints one short decision (`NO TRADE` or `BLOCK`, with a plain reason) or a buy / stop / target card you place manually in IBKR. The default text stays verbose. `--json` is unchanged when `--simple` is also passed. `--simple` works with `--equity`.
 
 `uv sync` creates `.venv` and installs the locked dependencies from `uv.lock`. You do not need a system Python beyond what uv downloads (3.12).
 
@@ -47,7 +60,7 @@ Linux is a fallback for CI and agents only. On Linux the data root is `$XDG_DATA
 
 ## What analyze prints
 
-`swing analyze AAPL` prints one envelope. Money is USD. `--equity USD` sets the account equity in USD for that invocation and wins over `[account].equity_usd`. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, and size, each price in USD), each gate name and status, and the disclaimer. On `ENTER_LONG` it also says when to buy and when to sell. `--compact` is off unless you pass it; the compact view is shorter (`Buy:` / `Sell:`) and still includes the plan, the clocks, and the disclaimer. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `instructions` is an additive object on that same schema (`buy`, `sell`, and `currency` = `USD`). It is null unless the decision is `ENTER_LONG`. The schema version is unchanged. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
+`swing analyze AAPL` prints one envelope. Money is USD. `--equity USD` sets the account equity in USD for that invocation and wins over `[account].equity_usd`. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, and size, each price in USD), each gate name and status, and the disclaimer. On `ENTER_LONG` it also says when to buy and when to sell. `--compact` is off unless you pass it; the compact view is shorter (`Buy:` / `Sell:`) and still includes the plan, the clocks, and the disclaimer. `--simple` is a separate, even shorter card (decision and reason, or buy / stop / target) and does not change `--json`. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `instructions` is an additive object on that same schema (`buy`, `sell`, and `currency` = `USD`). It is null unless the decision is `ENTER_LONG`. The schema version is unchanged. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
 
 Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, a missing config path, or a journal line that is not valid JSON.
 
@@ -94,7 +107,7 @@ With neither `--equity` nor `[account].equity_usd` set, the decision is `NO_TRAD
 
 ## Environment variables
 
-None are required to print an envelope.
+None are required to print an envelope. The same names can live in `.env` (copy `.env.example`) or in the shell. The shell wins.
 
 | Variable | Required | Role |
 |---|---|---|
