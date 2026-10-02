@@ -13,6 +13,7 @@ from swing.book import (
     import_v0_journal,
     load_book,
     review_summary,
+    satellite_vs_benchmark,
     score_plan,
 )
 from swing.data.models import DailyBar
@@ -78,6 +79,17 @@ def test_review_math_matches_a_hand_trade_and_stays_unproven():
     assert proven["mean_r"] == 1
     losers = [{"r": -0.2, "hold_days": 1} for _ in range(100)]
     assert review_summary(losers)["label"] == "unproven"
+
+
+def test_satellite_return_matches_the_hand_worked_benchmark():
+    trades = closed_trades_from_numbers()
+    bars = (
+        _bar("2026-10-01", 100, 101, 99, 100),
+        _bar("2026-10-08", 110, 111, 109, 110),
+    )
+    satellite, benchmark = satellite_vs_benchmark(trades, bars)
+    assert abs(satellite - 0.2) < 1e-9
+    assert abs(benchmark - 0.1) < 1e-9
 
 
 def test_forward_score_is_the_hand_worked_two_r():

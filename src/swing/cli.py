@@ -294,6 +294,15 @@ def _portfolio(args) -> int:
     trades = closed_trades(events)
     summary = review_summary(trades)
     _print_review(summary)
+    cache = root / "cache" / "bars"
+    spus = read_bars(cache, "SPUS") if cache.is_dir() else None
+    if spus is not None and trades:
+        from swing.book import satellite_vs_benchmark
+
+        satellite, benchmark = satellite_vs_benchmark(trades, spus.bars)
+        bench = "unavailable" if benchmark is None else f"{benchmark:.2%}"
+        sat = "unavailable" if satellite is None else f"{satellite:.2%}"
+        print(f"satellite {sat}  SPUS {bench}")
     if args.plans:
         cache = root / "cache" / "bars"
         for plan in load_plans(plans_path(root)):
@@ -339,7 +348,7 @@ def _print_review(summary: dict) -> None:
         f"closed {summary['n']}  mean R {summary['mean_r']:.3f} ± {summary['se']:.3f}  "
         f"win {summary['win_rate']:.0%}  avg hold {summary['avg_hold']:.1f} days  {summary['label']}"
     )
-    print("Satellite versus SPUS is unproven until mean R − 2·SE is above 0 after 100 closed trades.")
+    print("The book is unproven until mean R − 2·SE is above 0 after 100 closed trades.")
 
 
 def _backtest(args) -> int:

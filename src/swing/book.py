@@ -291,6 +291,22 @@ def closed_trades(events: list[Buy | Sell]) -> list[dict]:
     return closed
 
 
+def satellite_vs_benchmark(trades: list[dict], bars: tuple) -> tuple[float | None, float | None]:
+    """Capital-weighted trade return, and the benchmark's price return over the same dates."""
+    if not trades or not bars:
+        return None, None
+    cost = sum(trade["shares"] * trade["entry"] for trade in trades)
+    pnl = sum(trade["shares"] * (trade["exit"] - trade["entry"]) for trade in trades)
+    if cost <= 0:
+        return None, None
+    start = min(trade["entry_day"] for trade in trades)
+    end = max(trade["exit_day"] for trade in trades)
+    window = [bar for bar in bars if start <= bar.session <= end]
+    if len(window) < 2 or window[0].close <= 0:
+        return pnl / cost, None
+    return pnl / cost, window[-1].close / window[0].close - 1
+
+
 def review_summary(trades: list[dict]) -> dict:
     scored = [trade for trade in trades if trade["r"] is not None]
     count = len(scored)
