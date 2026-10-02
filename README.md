@@ -93,6 +93,10 @@ An `ENTER_LONG` stamp of `checklist_only` means the predetermined rules matched.
 
 **When to sell.** v0 exits at the stop or the 2R target. Time-stops are not in v0. An SMA(5) exit is not in v0. You type the exit in Interactive Brokers yourself.
 
+## Research data
+
+Daily use does not wait on a paid history file. The optional harness download is Sharadar Prices, full history (SEP). Nasdaq Data Link still aliases that equity-price table as SEP. It is for rerunning the pre-registered variants only. Do not put that key on the live scan path, and do not search parameters on the new file. See [docs/decisions/SECTION8_ANSWERS.md](docs/decisions/SECTION8_ANSWERS.md).
+
 ## Tests
 
 ```bash

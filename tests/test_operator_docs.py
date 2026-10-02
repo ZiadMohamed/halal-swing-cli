@@ -40,6 +40,11 @@ def test_readme_records_the_satellite_operator_file():
     assert "30–50" in readme
     assert "`TICKER ETF`" in readme
     assert "SPY stays out of the file" in readme
+    research = readme.split("## Research data", 1)[1].split("## Tests", 1)[0]
+    assert "Sharadar Prices, full history" in research
+    assert "(SEP)" in research
+    assert "live scan path" in research
+    assert "pre-registered" in research
 
 
 def test_example_config_still_matches_builtin_defaults():

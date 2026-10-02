@@ -41,6 +41,8 @@ Earnings: Finnhub `/calendar/earnings` and the yfinance calendar. The earlier ne
 
 Finnhub premium endpoints are not called. Context.dev is not a dependency.
 
+Sharadar Prices, full history (SEP), is an optional harness download. It is not on the live scan path.
+
 ## What the checklist does today
 
 The live checklist is still the v0 book: three triggers with the mutex, a 1.5×ATR stop, a 2R target, heat and four positions, and the earnings blackout. v1 (trend filter, momentum rank, regime gate, earnings exit, five slots, trail) was measured and not switched on. See [docs/backtests/v1-gate.md](backtests/v1-gate.md). In the 2014 window the random-rank book had the higher Sharpe.
