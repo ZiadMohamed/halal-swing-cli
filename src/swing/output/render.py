@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
+from swing.data.errors import fix_line, kind_of
 from swing.envelope import Envelope, Plan, Reason
 from swing.output.instructions import build_instructions, compact_buy, compact_sell
 
@@ -41,6 +42,7 @@ def render_text(
     if envelope.data.status != "not_loaded":
         suspect = "suspect" if envelope.data.corp_action_suspect else "clean"
         lines.append(f"data: {envelope.data.status} bars={envelope.data.bar_count} {suspect}")
+        lines.extend(error_lines(envelope.data.errors))
     if envelope.plan is not None:
         lines.append(_plan_line(envelope.plan))
     elif envelope.equity_usd is not None:
@@ -51,6 +53,19 @@ def render_text(
     lines.extend(_gate_lines(envelope))
     lines.append(envelope.disclaimer)
     return "\n".join(lines) + "\n"
+
+
+def error_lines(errors: list[str]) -> list[str]:
+    """One line per vendor error, then the fix for its class."""
+    lines: list[str] = []
+    for error in errors:
+        lines.append(f"data error: {error}")
+        kind = kind_of(error)
+        if kind is None:
+            continue
+        env_name = error.split(":", 1)[1] if error.startswith("missing_api_key:") else None
+        lines.append(f"  fix: {fix_line(kind, env_name)}")
+    return lines
 
 
 def _plan_line(plan: Plan) -> str:
