@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from swing import __version__
 from swing.analyze import analyze
+from swing.codes import ReasonCode
 from swing.config import load_config
 from swing.envfile import load_project_env
 from swing.journal.paper import PaperJournal
@@ -30,20 +31,22 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config(path=args.config)
         compact = bool(args.compact or config.output.compact)
         journal = PaperJournal()
-        sector = _sector(args.sector)
+        positions = journal.load_positions()
         envelope = analyze(
             args.ticker,
             config=config,
             compact=compact,
             fetch_market=True,
-            positions=journal.load_positions(),
-            sector=sector,
+            positions=positions,
+            sector=_sector(args.sector),
             equity_usd=args.equity,
         )
-        journal.append(envelope, equity_usd=envelope.equity_usd, sector=sector)
     except (ValueError, ValidationError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
         return 2
+    hint = _journal_hint(envelope, journal.path, len(positions))
+    if hint:
+        print(hint, file=sys.stderr)
     if args.json:
         sys.stdout.write(render_json(envelope))
     elif args.simple:
@@ -125,6 +128,20 @@ def _usd_equity(value: str) -> float:
     return equity
 
 
+def _journal_hint(envelope, path: Path, open_lines: int) -> str | None:
+    """Explain old plan lines that block entries. The file is never moved by the CLI."""
+    if open_lines == 0 or not envelope.reasons:
+        return None
+    if envelope.reasons[0].code not in (ReasonCode.MAX_POSITIONS, ReasonCode.HEAT_LIMIT):
+        return None
+    archive = path.with_name("journal.v0.jsonl")
+    return (
+        f"Open risk comes from {open_lines} line(s) in {path}. Earlier versions appended every planned "
+        "ENTER_LONG there; analyze no longer does, and those lines are plans, not fills. "
+        f"If none are real IBKR positions, archive the file yourself:\n  mv \"{path}\" \"{archive}\""
+    )
+
+
 def _sector(value: str | None) -> str | None:
     if value is None:
         return None
@@ -139,6 +156,8 @@ def _configure_logging(verbose: bool) -> None:
         force=True,
         format="%(levelname)s %(name)s: %(message)s",
     )
+    # yfinance logs vendor 404s (for example, no calendar for an ETF) as errors.
+    logging.getLogger("yfinance").setLevel(logging.DEBUG if verbose else logging.CRITICAL)
 
 
 if __name__ == "__main__":

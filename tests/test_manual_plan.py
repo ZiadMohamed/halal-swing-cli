@@ -130,10 +130,7 @@ def test_json_adds_buy_and_sell_without_a_schema_bump_or_a_new_hash(_offline: Pa
     assert "2R" in instructions["sell"]
     assert "not in v0" in instructions["sell"]
     assert "Interactive Brokers" in instructions["buy"]
-    journal = json.loads((_offline.parent / "swing-data" / "journal.jsonl").read_text(encoding="utf-8").splitlines()[-1])
-    assert "instructions" not in journal
-    assert journal["equity_usd"] == 10000.0
-    assert journal["config_hash"] == file_hash
+    assert not (_offline.parent / "swing-data" / "journal.jsonl").exists()
 
 
 def test_no_trade_does_not_print_buy_or_sell_instructions(_offline: Path):

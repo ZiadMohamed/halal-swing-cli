@@ -62,7 +62,7 @@ def test_analyze_help_documents_the_equity_override(capsys):
     assert "EQUITY_UNSET" in text
 
 
-def test_cli_equity_sizes_and_journals_without_changing_the_file_hash(
+def test_cli_equity_sizes_without_changing_the_file_hash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     install_market(monkeypatch, next_open=SUMMER_OPEN)
@@ -83,11 +83,7 @@ def test_cli_equity_sizes_and_journals_without_changing_the_file_hash(
     assert plan["size_shares"] < _shares(100_000.0, plan["entry"], plan["stop"])
     assert payload["equity_usd"] == 10_000.0
     assert plan["equity_usd"] == 10_000.0
-    record = json.loads((tmp_path / "swing-data" / "journal.jsonl").read_text(encoding="utf-8"))
-    assert record["equity_usd"] == 10_000.0
-    assert record["size_shares"] == plan["size_shares"]
-    assert record["risk_fraction"] == pytest.approx(record["size_shares"] * (record["entry"] - record["stop"]) / 10_000.0)
-    assert record["config_hash"] == file_config.config_hash()
+    assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
     assert "equity=10000.0" in _run(["analyze", "AAPL", "--config", str(path), "--equity", "10000"])[1]
 
 
@@ -115,15 +111,7 @@ def test_cli_equity_wins_over_toml_and_leaves_indicator_prices_alone(
     assert over["plan"]["size_shares"] == _shares(10_000.0, over["plan"]["entry"], over["plan"]["stop"])
     assert base["equity_usd"] == 50_000.0
     assert over["equity_usd"] == 10_000.0
-    lines = (tmp_path / "swing-data" / "journal.jsonl").read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 2
-    assert json.loads(lines[0])["equity_usd"] == 50_000.0
-    assert json.loads(lines[1])["equity_usd"] == 10_000.0
-    assert json.loads(lines[1])["risk_fraction"] == pytest.approx(
-        json.loads(lines[1])["size_shares"]
-        * (json.loads(lines[1])["entry"] - json.loads(lines[1])["stop"])
-        / 10_000.0
-    )
+    assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
 
 def test_override_does_not_rescale_open_heat_and_still_blocks_at_one_percent(
@@ -187,10 +175,7 @@ def test_cli_equity_alone_is_enough_when_toml_leaves_it_unset(tmp_path: Path, mo
     assert payload["equity_usd"] == 10_000.0
     assert payload["plan"]["equity_usd"] == 10_000.0
     assert payload["plan"]["size_shares"] == _shares(10_000.0, payload["plan"]["entry"], payload["plan"]["stop"])
-    record = json.loads((tmp_path / "swing-data" / "journal.jsonl").read_text(encoding="utf-8"))
-    assert record["risk_fraction"] == pytest.approx(
-        record["size_shares"] * (record["entry"] - record["stop"]) / 10_000.0
-    )
+    assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
 
 def test_analyze_override_does_not_mutate_config_or_invent_equity():

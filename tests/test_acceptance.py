@@ -80,34 +80,21 @@ def test_renderer_does_not_write_the_journal():
     assert "journal.jsonl" not in source
 
 
-def test_enter_long_is_journaled_and_prints_summer_clocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_enter_long_prints_the_plan_and_summer_clocks_without_journaling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     install_market(monkeypatch, next_open=SUMMER_OPEN)
     config = _equity_config(tmp_path)
-    code, text, _err = _run(["analyze", "AAPL", "--config", str(config)])
-    assert code == 0
-    assert "AAPL  ENTER_LONG" in text
+    path = tmp_path / "swing-data" / "journal.jsonl"
+    for _ in range(5):
+        code, text, _err = _run(["analyze", "AAPL", "--config", str(config)])
+        assert code == 0
+        assert "AAPL  ENTER_LONG" in text
     assert f"next_open America/New_York {NY_SUMMER}" in text
     assert f"next_open Africa/Cairo {CAIRO_SUMMER}" in text
     assert "  data_auth: pass" in text
     assert text.rstrip("\n").endswith(DISCLAIMER)
-    path = tmp_path / "swing-data" / "journal.jsonl"
-    lines = path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 1
-    record = json.loads(lines[0])
-    assert record["decision"] == "ENTER_LONG"
-    assert record["ticker"] == "AAPL"
-    assert record["size_shares"] >= 1
-    equity = 100_000.0
-    assert record["risk_fraction"] == pytest.approx(
-        record["size_shares"] * (record["entry"] - record["stop"]) / equity
-    )
-    assert record["equity_usd"] == equity
-
-    code2, text2, _err2 = _run(["analyze", "AAPL", "--config", str(config)])
-    assert code2 == 0
-    assert "ENTER_LONG" in text2
-    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
-    assert path.read_bytes().splitlines()[0] == lines[0].encode("utf-8")
+    assert not path.exists()
 
 
 def test_winter_open_prints_new_york_and_cairo_standard_offsets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -148,7 +135,7 @@ def test_no_trade_and_block_do_not_append(tmp_path: Path, monkeypatch: pytest.Mo
     assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
 
-def test_warn_exdiv_and_spy_r2_still_journal_the_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_warn_exdiv_and_spy_r2_keep_the_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     install_market(
         monkeypatch,
         next_open=SUMMER_OPEN,
@@ -165,13 +152,7 @@ def test_warn_exdiv_and_spy_r2_still_journal_the_plan(tmp_path: Path, monkeypatc
     assert payload["plan"]["size_shares"] >= 1
     assert payload["shariah"]["screened"] is False
     assert payload["research"]["affects_checklist_math"] is False
-    record = json.loads((tmp_path / "swing-data" / "journal.jsonl").read_text(encoding="utf-8"))
-    assert record["size_shares"] == payload["plan"]["size_shares"]
-    assert record["entry"] == payload["plan"]["entry"]
-    assert record["stop"] == payload["plan"]["stop"]
-    assert record["risk_fraction"] == pytest.approx(
-        record["size_shares"] * (record["entry"] - record["stop"]) / 100_000.0
-    )
+    assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
 
 def test_cli_enforces_heat_sector_heat_and_max_positions_from_the_journal(
@@ -204,7 +185,7 @@ def test_cli_enforces_heat_sector_heat_and_max_positions_from_the_journal(
     code, text, _err = _run(["analyze", "AAPL", "--config", str(config), "--json"])
     payload = json.loads(text)
     assert payload["decision"] == "ENTER_LONG"
-    assert len(journal.load_positions()) == 2
+    assert len(journal.load_positions()) == 1
 
     journal.path.unlink()
     for index in range(4):
@@ -213,11 +194,14 @@ def test_cli_enforces_heat_sector_heat_and_max_positions_from_the_journal(
             equity_usd=100_000.0,
             sector=None,
         )
-    code, text, _err = _run(["analyze", "AAPL", "--config", str(config), "--json"])
+    before = journal.path.read_bytes()
+    code, text, err = _run(["analyze", "AAPL", "--config", str(config), "--json"])
     payload = json.loads(text)
     assert payload["decision"] == "NO_TRADE"
     assert payload["reasons"][0]["code"] == "MAX_POSITIONS"
-    assert len(journal.load_positions()) == 4
+    assert journal.path.read_bytes() == before
+    assert "4 line(s)" in err
+    assert f'mv "{journal.path}" "{journal.path.with_name("journal.v0.jsonl")}"' in err
 
 
 def test_a_corrupt_journal_refuses_to_analyze(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
