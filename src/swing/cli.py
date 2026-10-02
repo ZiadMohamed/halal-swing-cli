@@ -28,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "backtest":
         return _backtest(args)
+    if args.command == "doctor":
+        return _doctor()
     if args.command in {"buy", "sell", "positions", "today", "review"}:
         try:
             return _portfolio(args)
@@ -146,7 +148,57 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("today", help="Exits due and open capacity. Does not download.")
     review = sub.add_parser("review", help="Closed trades and forward-scored plans")
     review.add_argument("--plans", action="store_true")
+    sub.add_parser("doctor", help="Check keys, cache, universe, and the book. May call vendors.")
     return parser
+
+
+def _live_probe(name: str, endpoint: str) -> None:
+    import os
+    from datetime import timedelta
+
+    key = os.environ.get(name, "").strip()
+    if name == "FINNHUB_API_KEY":
+        from swing.data.finnhub import FinnhubEvents
+
+        FinnhubEvents(api_key=key).earnings_calendar("AAPL")
+        return
+    if name == "MASSIVE_API_KEY":
+        from swing.data.http import get_json
+
+        day = date.today() - timedelta(days=7)
+        url = f"https://api.massive.com{endpoint}/locale/us/market/stocks/{day.isoformat()}?adjusted=true"
+        get_json(url, {"Authorization": f"Bearer {key}"})
+    del endpoint
+
+
+def _doctor() -> int:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from swing.data.cache import read_bars
+    from swing.data.calendar import NyseCalendar
+    from swing.doctor import default_home, render_findings, run_doctor
+
+    home = default_home()
+    cache = home / "cache" / "bars"
+    series = read_bars(cache, "SPY") if cache.is_dir() else None
+    last = None
+    try:
+        last = NyseCalendar().last_completed_session(datetime.now(ZoneInfo("America/New_York")))
+    except Exception:
+        last = None
+    spy_session = None if series is None or not series.bars else series.bars[-1].session
+    findings = run_doctor(
+        env=dict(__import__("os").environ),
+        home=home,
+        cwd=Path.cwd(),
+        today=datetime.now().date(),
+        last_session=last,
+        spy_session=spy_session,
+        probe=_live_probe,
+    )
+    sys.stdout.write(render_findings(findings))
+    return 0 if all(item.ok for item in findings) else 1
 
 
 def _home() -> Path:
