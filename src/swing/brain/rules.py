@@ -42,6 +42,9 @@ class Variant:
     trail_atr: float = 3.0
     target_r: float = 2.0
     earnings_room: int = 3
+    min_price: float = 0.0
+    min_median_dollar_volume: float = 0.0
+    min_sessions: int = 0
 
 
 @dataclass(frozen=True)
@@ -100,9 +103,11 @@ class SignalTape:
         earnings: tuple[date, ...] = (),
     ) -> Candidate | None:
         index = self.by_session.get(session)
-        if index is None:
+        if index is None or index + 1 < variant.min_sessions:
             return None
         bar = self.bars[index]
+        if not _liquid(self.bars, index, variant):
+            return None
         if variant.trend_sma is not None:
             trend = _sma_at([item.close for item in self.bars], index, variant.trend_sma)
             if trend is None or bar.close <= trend:
@@ -162,7 +167,9 @@ def candidate_for(
     earnings: tuple[date, ...] = (),
 ) -> Candidate | None:
     """Signal at the last bar's close, or None when this variant does not enter."""
-    if len(bars) < 20:
+    if len(bars) < max(20, variant.min_sessions):
+        return None
+    if not _liquid(bars, len(bars) - 1, variant):
         return None
     if variant.trend_sma is not None:
         average = sma([bar.close for bar in bars], variant.trend_sma)
@@ -256,6 +263,20 @@ def _first_after(calendar: NyseCalendar, day: date) -> date | None:
         if calendar.is_session(cursor):
             return cursor
     return None
+
+
+def _liquid(bars, index: int, variant: Variant) -> bool:
+    price = bars[index].close
+    if price < variant.min_price:
+        return False
+    floor = variant.min_median_dollar_volume
+    if floor <= 0:
+        return True
+    if index < 19:
+        return False
+    dollars = sorted(bars[offset].close * bars[offset].volume for offset in range(index - 19, index + 1))
+    median = (dollars[9] + dollars[10]) / 2
+    return median >= floor
 
 
 def _sma_series(values: list[float], period: int) -> list[float | None]:

@@ -57,6 +57,29 @@ VARIANTS: dict[str, Variant] = {
     "G": _variant("G", risk=0.02),
     "I_moo": _variant("I_moo", exit="trail", slots=5, max_position_frac=0.20, entry_cap_atr=None),
     "I_cap": _variant("I_cap", exit="trail", slots=5, max_position_frac=0.20, entry_cap_atr=1.0),
+    "v1": _variant(
+        "v1",
+        exit="trail",
+        slots=5,
+        max_position_frac=0.20,
+        entry_cap_atr=1.0,
+        trend_sma=200,
+        min_price=5.0,
+        min_median_dollar_volume=10_000_000,
+        min_sessions=260,
+    ),
+    "v1_random": _variant(
+        "v1_random",
+        rank="random",
+        exit="trail",
+        slots=5,
+        max_position_frac=0.20,
+        entry_cap_atr=1.0,
+        trend_sma=200,
+        min_price=5.0,
+        min_median_dollar_volume=10_000_000,
+        min_sessions=260,
+    ),
 }
 
 

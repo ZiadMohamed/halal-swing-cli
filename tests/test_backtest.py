@@ -171,7 +171,24 @@ def test_same_inputs_are_identical_and_momentum_ranks_above_random_cash_cap():
 
 
 def test_registered_variants_are_the_appendix_list_only():
-    assert set(VARIANTS) == {"A", "B", "C", "M", "D2", "I", "J", "K", "L", "H", "E", "G", "I_moo", "I_cap"}
+    assert set(VARIANTS) == {
+        "A",
+        "B",
+        "C",
+        "M",
+        "D2",
+        "I",
+        "J",
+        "K",
+        "L",
+        "H",
+        "E",
+        "G",
+        "I_moo",
+        "I_cap",
+        "v1",
+        "v1_random",
+    }
     assert VARIANTS["D2"].exit == "trail"
     assert VARIANTS["M"].exit == "target_2r"
     assert VARIANTS["I"].slots == 5
