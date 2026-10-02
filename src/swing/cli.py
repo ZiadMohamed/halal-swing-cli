@@ -26,6 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     load_project_env()
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.command == "backtest":
+        return _backtest(args)
     if args.command != "analyze":
         parser.print_help(sys.stderr)
         return 2
@@ -114,7 +116,53 @@ def _parser() -> argparse.ArgumentParser:
         help="Use this report date for this run when the calendars are missing or wrong. Stamped on the plan.",
     )
     analyze_parser.add_argument("--verbose", action="store_true", help="Log to stderr. Stdout stays clean for --json.")
+    backtest = sub.add_parser("backtest", help="Run one pre-registered variant on cached bars")
+    backtest.add_argument("--variant", default="D2", help="Appendix A name: A, B, C, M, D2, I, J, K, L, H, E, G, I_moo, I_cap")
+    backtest.add_argument("--from", dest="start", default="2021-01-04")
+    backtest.add_argument("--to", dest="end", default="2026-09-30")
+    backtest.add_argument("--cache", type=Path, help="Parquet cache directory. No network.")
     return parser
+
+
+def _backtest(args) -> int:
+    from swing.backtest import VARIANTS, run_backtest
+    from swing.data.cache import read_bars
+
+    variant = VARIANTS.get(args.variant)
+    if variant is None:
+        print(f"Unknown variant {args.variant}.", file=sys.stderr)
+        return 2
+    cache = args.cache
+    if cache is None or not cache.is_dir():
+        print("backtest needs --cache of parquet bars. It does not download.", file=sys.stderr)
+        return 2
+    panels = {}
+    for path in sorted(cache.glob("*.parquet")):
+        series = read_bars(cache, path.stem)
+        if series is not None and series.bars:
+            panels[series.ticker] = series.bars
+    spy = panels.pop("SPY", None)
+    spus = panels.pop("SPUS", None)
+    if not panels:
+        print("No ticker parquet files in the cache.", file=sys.stderr)
+        return 2
+    result = run_backtest(
+        panels,
+        variant=variant,
+        start=date.fromisoformat(args.start),
+        end=date.fromisoformat(args.end),
+        spy=spy,
+        benchmarks={name: bars for name, bars in (("SPY", spy), ("SPUS", spus)) if bars is not None},
+    )
+    metrics = result.metrics
+    print(
+        f"{result.variant}  CAGR {metrics.cagr:.2%}  maxDD {metrics.max_dd:.2%}  "
+        f"Sharpe {metrics.sharpe:.2f}  trades {metrics.trades}  "
+        f"meanR {metrics.mean_r:.3f} ± {metrics.se_r:.3f}"
+    )
+    for name, bench in result.benchmarks.items():
+        print(f"{name} buy-hold  CAGR {bench.cagr:.2%}")
+    return 0
 
 
 def _iso_date(value: str) -> date:
