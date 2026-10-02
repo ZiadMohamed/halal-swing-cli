@@ -1,4 +1,9 @@
-"""Parquet cache under bars_cache_dir(). OHLC in the file is split-adjusted."""
+"""Parquet cache under bars_cache_dir(). OHLC in the file is split-adjusted.
+
+Providers write only settled, vendor-final bars (see `swing.data.bars.cacheable`).
+Reading drops any invalid row, so a cache written before the NaN fix cannot
+pass a zero-price bar to the checklist.
+"""
 
 from __future__ import annotations
 
@@ -8,22 +13,26 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from swing.data.bars import drop_invalid
 from swing.data.calendar import NyseCalendar
-from swing.data.models import Adjustment, BarSeries, DailyBar
+from swing.data.models import BarSeries, DailyBar
 
 
-def write_bars(cache_dir: Path, series: BarSeries) -> Path:
+def write_bars(cache_dir: Path, series: BarSeries) -> Path | None:
+    bars = drop_invalid(series.bars)
+    if not bars:
+        return None
     cache_dir.mkdir(parents=True, exist_ok=True)
     path = cache_dir / f"{_safe_ticker(series.ticker)}.parquet"
     table = pa.table(
         {
-            "session": pa.array([bar.session for bar in series.bars], type=pa.date32()),
-            "open": pa.array([bar.open for bar in series.bars], type=pa.float64()),
-            "high": pa.array([bar.high for bar in series.bars], type=pa.float64()),
-            "low": pa.array([bar.low for bar in series.bars], type=pa.float64()),
-            "close": pa.array([bar.close for bar in series.bars], type=pa.float64()),
-            "volume": pa.array([bar.volume for bar in series.bars], type=pa.float64()),
-            "raw_close": pa.array([bar.raw_close for bar in series.bars], type=pa.float64()),
+            "session": pa.array([bar.session for bar in bars], type=pa.date32()),
+            "open": pa.array([bar.open for bar in bars], type=pa.float64()),
+            "high": pa.array([bar.high for bar in bars], type=pa.float64()),
+            "low": pa.array([bar.low for bar in bars], type=pa.float64()),
+            "close": pa.array([bar.close for bar in bars], type=pa.float64()),
+            "volume": pa.array([bar.volume for bar in bars], type=pa.float64()),
+            "raw_close": pa.array([bar.raw_close for bar in bars], type=pa.float64()),
         }
     )
     metadata = {
@@ -32,6 +41,7 @@ def write_bars(cache_dir: Path, series: BarSeries) -> Path:
         b"adjustment": series.adjustment.encode(),
         b"corp_action_suspect": b"true" if series.corp_action_suspect else b"false",
         b"corp_action_reasons": ",".join(series.corp_action_reasons).encode(),
+        b"instrument_type": (series.instrument_type or "").encode(),
     }
     pq.write_table(table.replace_schema_metadata(metadata), path)
     return path
@@ -50,15 +60,15 @@ def read_bars(cache_dir: Path, ticker: str) -> BarSeries | None:
     closes = table.column("close").to_pylist()
     volumes = table.column("volume").to_pylist()
     raws = table.column("raw_close").to_pylist()
-    bars = tuple(
+    bars = drop_invalid(
         DailyBar(
             session=_as_date(session),
-            open=float(open_),
-            high=float(high),
-            low=float(low),
-            close=float(close),
-            volume=float(volume),
-            raw_close=float(raw),
+            open=_num(open_),
+            high=_num(high),
+            low=_num(low),
+            close=_num(close),
+            volume=_num(volume),
+            raw_close=_num(raw),
         )
         for session, open_, high, low, close, volume, raw in zip(
             sessions, opens, highs, lows, closes, volumes, raws, strict=True
@@ -68,6 +78,7 @@ def read_bars(cache_dir: Path, ticker: str) -> BarSeries | None:
     adjustment = meta.get(b"adjustment", b"split").decode()
     if adjustment not in {"split", "split_and_dividend"}:
         adjustment = "split"
+    instrument = meta.get(b"instrument_type", b"").decode() or None
     return BarSeries(
         ticker=meta.get(b"ticker", ticker.encode()).decode(),
         provider=meta.get(b"provider", b"cache").decode(),
@@ -75,6 +86,7 @@ def read_bars(cache_dir: Path, ticker: str) -> BarSeries | None:
         corp_action_suspect=meta.get(b"corp_action_suspect", b"false") == b"true",
         corp_action_reasons=reasons,
         adjustment=adjustment,  # type: ignore[arg-type]
+        instrument_type=instrument,
     )
 
 
@@ -105,3 +117,9 @@ def _as_date(value: date | datetime) -> date:
     if isinstance(value, datetime):
         return value.date()
     return value
+
+
+def _num(value: object) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return float("nan")

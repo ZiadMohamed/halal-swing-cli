@@ -49,6 +49,10 @@ class BarSeries:
     `corp_action_suspect` is true when the adjustment does not line up with the
     vendor's own unadjusted series or with the corporate actions it reported.
     Chat 3 should refuse a suspect series instead of running indicators on it.
+
+    `reconstructed` is true when the last bar was rebuilt from 1-hour
+    regular-session bars because the vendor's daily row was missing or not
+    finite. A reconstructed bar is never cached.
     """
 
     ticker: str
@@ -57,6 +61,8 @@ class BarSeries:
     corp_action_suspect: bool
     corp_action_reasons: tuple[str, ...]
     adjustment: Adjustment
+    reconstructed: bool = False
+    instrument_type: str | None = None
 
     def sliced(self, lookback: int) -> BarSeries:
         if lookback < 1:
@@ -106,6 +112,9 @@ class MarketData:
 
     Research headlines are not on this object. Do not pass a ResearchResult
     into indicator code.
+
+    `last_completed_session` is the NYSE session the signal bar must equal;
+    None skips the freshness check (fixtures only).
     """
 
     ticker: str
@@ -118,3 +127,4 @@ class MarketData:
     next_open: str | None
     errors: tuple[str, ...]
     events_known: bool = True
+    last_completed_session: date | None = None

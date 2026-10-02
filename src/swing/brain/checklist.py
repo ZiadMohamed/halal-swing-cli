@@ -26,6 +26,9 @@ Earnings blackout, when `earnings.strict`, is NYSE sessions from T minus
 in the reason and does not move the window. An unknown calendar (`events_known`
 false) does not enter while strict is on. An empty calendar enters only when
 events are known.
+
+The signal bar must be the last completed NYSE session when the data layer
+stamps one (`DATA_STALE` otherwise).
 """
 
 from __future__ import annotations
@@ -111,6 +114,16 @@ class ChecklistBrain:
             gates["data_auth"] = "no_trade"
             return finish(DecisionKind.NO_TRADE, (bars,))
         gates["data_auth"] = "pass"
+        if market is not None and market.bars is not None and market.bars.reconstructed:
+            warnings.append(
+                Reason(
+                    code=ReasonCode.WARN_BAR_RECONSTRUCTED,
+                    message=(
+                        f"The {bars[-1].session.isoformat()} bar was rebuilt from 1-hour bars because the "
+                        "vendor's daily row was missing or not finite. Check the close in IBKR before you buy."
+                    ),
+                )
+            )
 
         liquidity = _liquidity_problem(bars)
         if liquidity is not None:
@@ -221,6 +234,15 @@ def _tradable_bars(market: MarketData | None) -> tuple[DailyBar, ...] | Reason:
         return Reason(
             code=ReasonCode.NO_MARKET_DATA,
             message="The signal bar close is not a positive finite price.",
+        )
+    expected = market.last_completed_session
+    if expected is not None and signal.session != expected:
+        return Reason(
+            code=ReasonCode.DATA_STALE,
+            message=(
+                f"The last usable bar is {signal.session.isoformat()}, but the last completed NYSE session "
+                f"is {expected.isoformat()}. The vendor has not published a final bar for it yet."
+            ),
         )
     return market.bars.bars
 

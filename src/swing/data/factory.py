@@ -81,6 +81,12 @@ def load_market_data(
     event_provider = events if events is not None else build_event_provider(config, environ, today=clock.date())
 
     errors: list[str] = []
+    expected = None
+    try:
+        expected = cal.last_completed_session(clock)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"vendor_error:calendar:{type(exc).__name__}")
+
     series: BarSeries | None = None
     try:
         series = bar_provider.fetch_daily(ticker, lookback_sessions)
@@ -135,6 +141,7 @@ def load_market_data(
         next_open=next_open,
         errors=tuple(errors),
         events_known=not events_failed,
+        last_completed_session=expected,
     )
 
 

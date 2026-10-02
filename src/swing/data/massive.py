@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
+from swing.data.bars import cacheable, drop_invalid, through
 from swing.data.cache import read_fresh_bars, write_bars
 from swing.data.calendar import NyseCalendar
 from swing.data.corp_actions import assess_corp_actions
 from swing.data.errors import VendorError
-from swing.data.http import get_json, redact, strip_secrets
+from swing.data.http import endpoint_of, get_json, redact, strip_secrets
 from swing.data.models import BarSeries, CorporateAction, DailyBar
 
 _NY = ZoneInfo("America/New_York")
@@ -57,11 +60,14 @@ class MassiveBarProvider:
             )
             dividends = self._pages("/stocks/v1/dividends", {"ticker": symbol, "limit": "1000"})
         except VendorError as exc:
-            raise VendorError(redact(str(exc), self._api_key)) from None
+            raise VendorError(
+                redact(exc.detail, self._api_key), kind=exc.kind, endpoint=exc.endpoint, status=exc.status
+            ) from None
         series = _series_from_massive(symbol, adjusted, raw, splits, dividends)
+        series = replace(series, bars=through(series.bars, self._calendar.last_completed_session(now)))
         if not series.bars:
-            raise VendorError("empty_bars")
-        write_bars(self._cache_dir, series)
+            raise VendorError("empty_bars", kind="upstream", endpoint="/v2/aggs")
+        write_bars(self._cache_dir, cacheable(series, self._calendar.last_settled_session(now)))
         return series.sliced(lookback_sessions)
 
     def _aggs(self, symbol: str, start: date, end: date, *, adjusted: bool) -> list[dict[str, Any]]:
@@ -75,13 +81,13 @@ class MassiveBarProvider:
         for _ in range(20):
             payload = self._get(url if url is not None else path, {} if url is not None else params)
             if not isinstance(payload, dict):
-                raise VendorError("invalid_payload")
+                raise VendorError("payload is not an object", kind="bad_payload", endpoint=path)
             status = payload.get("status")
-            if status not in (None, "OK"):
-                raise VendorError(f"status_{status}")
+            if status not in (None, "OK", "DELAYED"):
+                raise VendorError(f"status_{status}", kind="bad_payload", endpoint=path)
             chunk = payload.get("results") or []
             if not isinstance(chunk, list):
-                raise VendorError("invalid_payload")
+                raise VendorError("results is not a list", kind="bad_payload", endpoint=path)
             rows.extend(row for row in chunk if isinstance(row, dict))
             nxt = payload.get("next_url") or ""
             if not isinstance(nxt, str) or not nxt:
@@ -103,7 +109,9 @@ class MassiveBarProvider:
         except VendorError:
             raise
         except Exception as exc:  # noqa: BLE001 — vendor boundary
-            raise VendorError(redact(f"{type(exc).__name__}:{exc}", self._api_key)) from None
+            raise VendorError(
+                redact(f"{type(exc).__name__}:{exc}", self._api_key), kind="upstream", endpoint=endpoint_of(url)
+            ) from None
 
 
 def _default_transport(url: str, headers: Mapping[str, str]) -> Any:
@@ -141,7 +149,7 @@ def _series_from_massive(
             )
         )
     actions = _actions(split_rows, dividend_rows)
-    ordered = tuple(sorted(bars, key=lambda bar: bar.session))
+    ordered = drop_invalid(sorted(bars, key=lambda bar: bar.session))
     assessment = assess_corp_actions(ordered, actions, adjustment="split")
     return BarSeries(
         ticker=ticker,
@@ -192,6 +200,7 @@ def _iso_date(value: object) -> date | None:
 
 
 def _num(value: object) -> float:
-    if isinstance(value, (int, float)):
+    """Missing stays NaN so `drop_invalid` removes the row; never read as 0."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
-    return 0.0
+    return math.nan

@@ -106,6 +106,8 @@ class DataView(_Strict):
     next_open: str | None = None
     errors: list[str] = Field(default_factory=list)
     events_known: bool = False
+    reconstructed: bool = False
+    last_completed_session: str | None = None
 
 
 class Envelope(_Strict):

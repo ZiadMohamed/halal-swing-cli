@@ -41,7 +41,9 @@ def render_text(
         lines.append(f"research: {envelope.research.status} ({envelope.research.reason})")
     if envelope.data.status != "not_loaded":
         suspect = "suspect" if envelope.data.corp_action_suspect else "clean"
-        lines.append(f"data: {envelope.data.status} bars={envelope.data.bar_count} {suspect}")
+        last = envelope.data.last_session or "none"
+        rebuilt = " reconstructed" if envelope.data.reconstructed else ""
+        lines.append(f"data: {envelope.data.status} bars={envelope.data.bar_count} last={last} {suspect}{rebuilt}")
         lines.extend(error_lines(envelope.data.errors))
     if envelope.plan is not None:
         lines.append(_plan_line(envelope.plan))
@@ -158,6 +160,7 @@ def _format_stamp(raw: str, *, user_tz: str, market_tz: str, compact: bool) -> l
 _PLAIN: dict[ReasonCode, str] = {
     ReasonCode.PIPELINE_NOT_IMPLEMENTED: "checklist is not installed yet",
     ReasonCode.NO_MARKET_DATA: "no price bars are loaded",
+    ReasonCode.DATA_STALE: "the vendor has no final bar for the last NYSE session yet",
     ReasonCode.CORP_ACTION_SUSPECT: "the price series looks wrong after a corporate action",
     ReasonCode.ILLIQUID: "the name is too illiquid",
     ReasonCode.EXDIV_BLOCK: "the ex-dividend yield blocks the entry",

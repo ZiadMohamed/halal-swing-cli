@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 from swing.data.errors import DataError
 
 _NY = ZoneInfo("America/New_York")
+# Vendors can revise the closing print for a while after the bell.
+SETTLE = timedelta(hours=1)
 
 
 class NyseCalendar:
@@ -72,7 +74,19 @@ class NyseCalendar:
         return self.shift_session(day, -1)
 
     def last_completed_session(self, now: datetime) -> date:
-        moment = _as_ny(now)
+        return self._last_closed_before(_as_ny(now))
+
+    def last_settled_session(self, now: datetime, settle: timedelta = SETTLE) -> date:
+        """Last session that closed at least `settle` ago. Only these bars are cached."""
+        return self._last_closed_before(_as_ny(now) - settle)
+
+    def session_open(self, day: date) -> datetime:
+        return self._xnys().session_open(_timestamp(day)).tz_convert(_NY).to_pydatetime()
+
+    def session_close(self, day: date) -> datetime:
+        return self._xnys().session_close(_timestamp(day)).tz_convert(_NY).to_pydatetime()
+
+    def _last_closed_before(self, moment: datetime) -> date:
         calendar = self._xnys()
         start = moment.date() - timedelta(days=14)
         sessions = calendar.sessions_in_range(_timestamp(start), _timestamp(moment.date()))

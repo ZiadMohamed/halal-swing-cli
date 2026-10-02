@@ -228,6 +228,10 @@ def _data_view(market: MarketData | None) -> DataView:
         next_open=market.next_open,
         errors=list(market.errors),
         events_known=market.events_known,
+        reconstructed=bool(bars and bars.reconstructed),
+        last_completed_session=(
+            None if market.last_completed_session is None else market.last_completed_session.isoformat()
+        ),
     )
 
 
