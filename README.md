@@ -14,7 +14,7 @@ uv tool install --editable .
 cp .env.example .env
 ```
 
-Put `FINNHUB_API_KEY` and `MASSIVE_API_KEY` in `.env` if you have them. The shell wins over the file.
+Put `FINNHUB_API_KEY` and `MASSIVE_API_KEY` in `.env`. Doctor requires both free keys. The shell wins over the file. Bars stay on yfinance until you set `SWING_BARS_PROVIDER=massive`. Context.dev is not a dependency.
 
 ## ~/.swing
 
@@ -73,7 +73,7 @@ US cash session is 16:30–23:00 Cairo for most of the year, and 15:30–22:00 w
 4. After the fill, `swing buy TICKER --shares N --price P`. On the way out, `swing sell TICKER --shares N --price P --reason stop|trail|earnings|manual`.
 5. Weekly, `swing review` and `swing review --plans`. The book is **unproven** until mean R − 2·SE is above 0 after 100 closed trades.
 
-`swing doctor` checks keys, the universe file, SPY freshness, and the book.
+`swing doctor` requires `FINNHUB_API_KEY` and `MASSIVE_API_KEY`, and it checks the universe file, SPY freshness, and the book. A missing Massive key does not block a fresh yfinance bar. The built-in bars provider stays `yfinance`.
 
 ## How to use the plan (manual IBKR)
 

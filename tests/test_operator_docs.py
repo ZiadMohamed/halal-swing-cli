@@ -12,6 +12,19 @@ from swing.hashing import config_hash
 _ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_env_example_requires_both_free_keys_and_keeps_yfinance():
+    example = (_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "FINNHUB_API_KEY" in example
+    assert "MASSIVE_API_KEY" in example
+    assert "Required" in example
+    assert "stays yfinance" in example
+    assert "CONTEXT_DEV" not in example
+    assert "Context.dev is not a dependency" in example
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Doctor requires both free keys" in readme
+    assert "CONTEXT_DEV" not in readme
+
+
 def test_readme_records_the_satellite_operator_file():
     readme = (_ROOT / "README.md").read_text(encoding="utf-8")
     assert "docs/decisions/SECTION8_ANSWERS.md" in readme

@@ -73,15 +73,31 @@ def _env_files(env: dict[str, str], home: Path, cwd: Path) -> Finding:
     return Finding("env", True, f"{where}; " + "; ".join(keys))
 
 
+_REQUIRED_KEYS = (
+    (
+        "FINNHUB_API_KEY",
+        "/calendar/earnings",
+        "Set FINNHUB_API_KEY in the shell or ~/.swing/.env. "
+        "The free Finnhub key is required for /calendar/earnings. "
+        "Context.dev is not a dependency.",
+    ),
+    (
+        "MASSIVE_API_KEY",
+        "/v2/aggs/grouped",
+        "Set MASSIVE_API_KEY in the shell or ~/.swing/.env. "
+        "The free Massive key is required. "
+        "data.bars_provider stays yfinance until SWING_BARS_PROVIDER=massive. "
+        "A missing Massive key does not block a fresh yfinance bar.",
+    ),
+)
+
+
 def _keys(env: dict[str, str], probe) -> list[Finding]:
     found = []
-    for name, endpoint in (
-        ("FINNHUB_API_KEY", "/calendar/earnings"),
-        ("MASSIVE_API_KEY", "/v2/aggs/grouped"),
-    ):
+    for name, endpoint, required_fix in _REQUIRED_KEYS:
         raw = env.get(name, "").strip()
         if not raw:
-            found.append(Finding(name, False, "missing", fix_line("missing_key", name)))
+            found.append(Finding(name, False, "required", required_fix))
             continue
         if probe is None:
             found.append(Finding(name, True, f"set {mask_secret(raw)}; probe skipped"))

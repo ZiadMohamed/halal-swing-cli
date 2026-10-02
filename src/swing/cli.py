@@ -148,7 +148,14 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("today", help="Exits due and open capacity. Does not download.")
     review = sub.add_parser("review", help="Closed trades and forward-scored plans")
     review.add_argument("--plans", action="store_true")
-    sub.add_parser("doctor", help="Check keys, cache, universe, and the book. May call vendors.")
+    sub.add_parser(
+        "doctor",
+        help=(
+            "Require FINNHUB_API_KEY and MASSIVE_API_KEY. Check ~/.swing, the universe, "
+            "SPY freshness, and the book. May call vendors. Does not send orders. "
+            "Bars stay on yfinance until SWING_BARS_PROVIDER=massive."
+        ),
+    )
     return parser
 
 

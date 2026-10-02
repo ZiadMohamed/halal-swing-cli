@@ -31,6 +31,10 @@ def test_missing_key_401_403_and_429_each_have_a_fix(tmp_path: Path):
     missing = render_findings(_run(tmp_path, {}))
     assert "FINNHUB_API_KEY" in missing
     assert "Set FINNHUB_API_KEY" in missing
+    assert "MASSIVE_API_KEY" in missing
+    assert "required" in missing
+    assert "stays yfinance" in missing
+    assert "CONTEXT_DEV" not in missing
 
     rated = render_findings(_run(tmp_path, {"FINNHUB_API_KEY": "abcdefghijklmnop", "MASSIVE_API_KEY": "massive-key-1234"}, probe=probe))
     assert "invalid_key" in rated
