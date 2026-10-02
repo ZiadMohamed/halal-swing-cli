@@ -9,6 +9,7 @@ from typing import Literal
 Adjustment = Literal["split", "split_and_dividend"]
 EarningsHour = Literal["bmo", "amc", "dmh", "unknown"]
 MarketStatus = Literal["ok", "partial", "error"]
+InstrumentType = Literal["EQUITY", "ETF"]
 
 # Enough sessions for SMA(200) plus warmup. Not a hashed policy field.
 DEFAULT_LOOKBACK_SESSIONS = 320
@@ -78,8 +79,8 @@ class EarningsEvent:
     through T plus `earnings.blackout_after_days` on NYSE sessions when
     `earnings.strict` is true. This object does not decide NO_TRADE.
 
-    `hour` is Finnhub's tag: `bmo` before the open, `amc` after the close,
-    `dmh` during the session, or `unknown`.
+    `hour` is `bmo` before the open, `amc` after the close, `dmh` during the
+    session, or `unknown`.
     """
 
     ticker: str
@@ -87,20 +88,20 @@ class EarningsEvent:
     hour: EarningsHour
     quarter: int | None = None
     year: int | None = None
+    source: str | None = None
 
 
 @dataclass(frozen=True)
 class DividendEvent:
-    """Cash distribution on the ex-dividend date.
+    """Cash distribution on the ex-dividend date. Optional data; never required.
 
-    Chat 3 compares `amount` (cash per share) with the prior close. Yield at or
-    above `exdiv.block_yield_gte` blocks. When `exdiv.strict` is false, any
-    other ex-div in the window warns. This object does not decide.
+    `amount` is cash per share when the source gives it, else None. Chat 3
+    compares a known amount with the prior close. This object does not decide.
     """
 
     ticker: str
     ex_date: date
-    amount: float
+    amount: float | None
     currency: str  # vendor label only; plan money is USD and v0 does not convert
     pay_date: date | None = None
     frequency: str | None = None
@@ -113,8 +114,9 @@ class MarketData:
     Research headlines are not on this object. Do not pass a ResearchResult
     into indicator code.
 
-    `last_completed_session` is the NYSE session the signal bar must equal;
-    None skips the freshness check (fixtures only).
+    `events_known` describes the earnings calendar only. Dividends never
+    change it. `last_completed_session` is the NYSE session the signal bar
+    must equal; None skips the freshness check (fixtures only).
     """
 
     ticker: str
@@ -127,4 +129,6 @@ class MarketData:
     next_open: str | None
     errors: tuple[str, ...]
     events_known: bool = True
+    instrument_type: InstrumentType | None = None
+    earnings_source: str | None = None
     last_completed_session: date | None = None

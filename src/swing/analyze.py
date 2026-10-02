@@ -105,6 +105,7 @@ def analyze(
                 cfg,
                 env=env,
                 lookback_sessions=cfg.spy_r2.lookback_days,
+                with_events=False,
             )
             if spy_market is not None and spy_market.bars is not None and not spy_market.bars.corp_action_suspect:
                 spy_bars = spy_market.bars
@@ -228,6 +229,8 @@ def _data_view(market: MarketData | None) -> DataView:
         next_open=market.next_open,
         errors=list(market.errors),
         events_known=market.events_known,
+        earnings_source=market.earnings_source,
+        instrument_type=market.instrument_type,
         reconstructed=bool(bars and bars.reconstructed),
         last_completed_session=(
             None if market.last_completed_session is None else market.last_completed_session.isoformat()

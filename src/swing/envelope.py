@@ -84,7 +84,7 @@ class DividendBrief(_Strict):
     """
 
     ex_date: str
-    amount: float
+    amount: float | None = None
     currency: str = Field(
         description="Vendor label for the cash amount. Not a currency setting. Plan money is USD."
     )
@@ -106,6 +106,8 @@ class DataView(_Strict):
     next_open: str | None = None
     errors: list[str] = Field(default_factory=list)
     events_known: bool = False
+    earnings_source: str | None = None
+    instrument_type: Literal["EQUITY", "ETF"] | None = None
     reconstructed: bool = False
     last_completed_session: str | None = None
 

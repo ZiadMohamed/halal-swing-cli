@@ -1,4 +1,8 @@
-"""Finnhub earnings and dividend calendars. This module does not request OHLC."""
+"""Finnhub earnings calendar (free tier). This module does not request OHLC.
+
+Only `/calendar/earnings` is called. Dividend, split, and candle endpoints are
+premium on Finnhub and return 403 for a free key, so they are never requested.
+"""
 
 from __future__ import annotations
 
@@ -10,16 +14,18 @@ from zoneinfo import ZoneInfo
 
 from swing.data.errors import MissingApiKeyError, VendorError
 from swing.data.http import get_json, redact
-from swing.data.models import DividendEvent, EarningsEvent, EarningsHour
+from swing.data.models import EarningsEvent, EarningsHour
 
 _NY = ZoneInfo("America/New_York")
 _BASE = "https://finnhub.io/api/v1"
 _HOURS = frozenset({"bmo", "amc", "dmh"})
+_PAST_DAYS = 5
+_FORWARD_DAYS = 35
 _Transport = Callable[[str, Mapping[str, str]], Any]
 
 
 class FinnhubEvents:
-    """Earnings announcement dates and cash dividend ex-dates for one ticker."""
+    """Earnings announcement dates for one ticker, from today-5 to today+35."""
 
     def __init__(
         self,
@@ -34,15 +40,18 @@ class FinnhubEvents:
         self._today = today
         self._base = base_url.rstrip("/")
 
+    def window(self) -> tuple[date, date]:
+        today = self._today if self._today is not None else datetime.now(_NY).date()
+        return today - timedelta(days=_PAST_DAYS), today + timedelta(days=_FORWARD_DAYS)
+
     def earnings_calendar(self, ticker: str) -> tuple[EarningsEvent, ...]:
         symbol = ticker.strip().upper()
-        start, end = self._window()
-        payload = self._get("/calendar/earnings", {"symbol": symbol, "from": start.isoformat(), "to": end.isoformat()})
-        if not isinstance(payload, dict):
-            raise VendorError("invalid_payload")
-        rows = payload.get("earningsCalendar")
+        start, end = self.window()
+        path = "/calendar/earnings"
+        payload = self._get(path, {"symbol": symbol, "from": start.isoformat(), "to": end.isoformat()})
+        rows = payload.get("earningsCalendar") if isinstance(payload, dict) else None
         if not isinstance(rows, list):
-            raise VendorError("invalid_payload")
+            raise VendorError("earningsCalendar missing", kind="bad_payload", endpoint=path)
         events: list[EarningsEvent] = []
         for row in rows:
             if not isinstance(row, dict) or row.get("symbol") != symbol:
@@ -57,43 +66,11 @@ class FinnhubEvents:
                     hour=_hour(row.get("hour")),
                     quarter=_int(row.get("quarter")),
                     year=_int(row.get("year")),
+                    source="finnhub",
                 )
             )
         events.sort(key=lambda item: item.report_date)
         return tuple(events)
-
-    def dividend_calendar(self, ticker: str) -> tuple[DividendEvent, ...]:
-        symbol = ticker.strip().upper()
-        start, end = self._window()
-        payload = self._get("/stock/dividend", {"symbol": symbol, "from": start.isoformat(), "to": end.isoformat()})
-        rows = _dividend_rows(payload)
-        events: list[DividendEvent] = []
-        for row in rows:
-            if row.get("symbol") not in (None, symbol):
-                continue
-            ex_date = _date(row.get("date") or row.get("ex_dividend_date"))
-            amount = row.get("amount")
-            if amount is None:
-                amount = row.get("adjustedAmount")
-            if ex_date is None or not isinstance(amount, (int, float)):
-                continue
-            currency = row.get("currency")
-            events.append(
-                DividendEvent(
-                    ticker=symbol,
-                    ex_date=ex_date,
-                    amount=float(amount),
-                    currency=currency if isinstance(currency, str) and currency else "USD",
-                    pay_date=_date(row.get("payDate") or row.get("pay_date")),
-                    frequency=_text(row.get("freq") or row.get("frequency")),
-                )
-            )
-        events.sort(key=lambda item: item.ex_date)
-        return tuple(events)
-
-    def _window(self) -> tuple[date, date]:
-        today = self._today if self._today is not None else datetime.now(_NY).date()
-        return today - timedelta(days=30), today + timedelta(days=180)
 
     def _get(self, path: str, params: Mapping[str, str]) -> Any:
         if not self._api_key:
@@ -103,11 +80,17 @@ class FinnhubEvents:
         try:
             payload = self._transport(url, headers)
         except VendorError as exc:
-            raise VendorError(redact(str(exc), self._api_key)) from None
+            raise VendorError(
+                redact(exc.detail, self._api_key),
+                kind=exc.kind,
+                endpoint=exc.endpoint or path,
+                status=exc.status,
+            ) from None
         except Exception as exc:  # noqa: BLE001 — vendor boundary
-            raise VendorError(redact(f"{type(exc).__name__}:{exc}", self._api_key)) from None
+            detail = redact(f"{type(exc).__name__}:{exc}", self._api_key)
+            raise VendorError(detail, kind="upstream", endpoint=path) from None
         if isinstance(payload, dict) and payload.get("error"):
-            raise VendorError(redact(str(payload["error"]), self._api_key))
+            raise VendorError(redact(str(payload["error"]), self._api_key), kind="bad_payload", endpoint=path)
         return payload
 
 
@@ -115,22 +98,13 @@ def _default_transport(url: str, headers: Mapping[str, str]) -> Any:
     return get_json(url, headers)
 
 
-def _dividend_rows(payload: Any) -> list[dict[str, Any]]:
-    if isinstance(payload, list):
-        return [row for row in payload if isinstance(row, dict)]
-    if isinstance(payload, dict):
-        rows = payload.get("data")
-        if rows is None:
-            rows = payload.get("results")
-        if isinstance(rows, list):
-            return [row for row in rows if isinstance(row, dict)]
-    raise VendorError("invalid_payload")
-
-
 def _date(value: object) -> date | None:
     if not isinstance(value, str) or len(value) < 10:
         return None
-    return date.fromisoformat(value[:10])
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
 
 
 def _hour(value: object) -> EarningsHour:
@@ -143,11 +117,3 @@ def _int(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return int(value)
-
-
-def _text(value: object) -> str | None:
-    if isinstance(value, str) and value:
-        return value
-    if isinstance(value, int) and not isinstance(value, bool):
-        return str(value)
-    return None

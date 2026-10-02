@@ -19,13 +19,14 @@ non-positive 20-session average of close times volume, is illiquid. ADR is the
 
 Ex-div is judged on the entry session only. Yield is cash amount divided by
 the prior adjusted close. `exdiv.strict` blocks that session. Otherwise a
-yield at or above `block_yield_gte` blocks and a smaller yield warns.
+yield at or above `block_yield_gte` blocks and a smaller or unknown yield
+warns. Dividend data is optional and never decides `events_known`.
 
 Earnings blackout, when `earnings.strict`, is NYSE sessions from T minus
 `blackout_before_days` through T plus `blackout_after_days`. `hour` is named
 in the reason and does not move the window. An unknown calendar (`events_known`
 false) does not enter while strict is on. An empty calendar enters only when
-events are known.
+events are known. An ETF has no earnings and passes this gate with a note.
 
 The signal bar must be the last completed NYSE session when the data layer
 stamps one (`DATA_STALE` otherwise).
@@ -140,9 +141,17 @@ class ChecklistBrain:
         else:
             gates["soft_veto"] = "pass"
 
-        earnings = _earnings_problem(self._calendar, config, market, entry_day)
-        if earnings is not None:
-            return halt("earnings", "no_trade", earnings[0], earnings[1])
+        if market is not None and market.instrument_type == "ETF":
+            warnings.append(
+                Reason(
+                    code=ReasonCode.NOTE_ETF_NO_EARNINGS,
+                    message="ETF: there are no earnings reports, so the earnings gate passes.",
+                )
+            )
+        else:
+            earnings = _earnings_problem(self._calendar, config, market, entry_day)
+            if earnings is not None:
+                return halt("earnings", "no_trade", earnings[0], earnings[1])
         gates["earnings"] = "pass"
 
         regime = _spy_warning(config, bars, spy_bars)
@@ -264,7 +273,7 @@ def _exdiv_decision(
     bars: tuple[DailyBar, ...],
     entry_day: date | None,
 ) -> tuple[str, str] | None:
-    if market is None or not market.events_known or entry_day is None:
+    if market is None or entry_day is None:
         return None
     blocking: str | None = None
     warning: str | None = None
@@ -272,7 +281,7 @@ def _exdiv_decision(
         if dividend.ex_date != entry_day:
             continue
         prior = _prior_close(bars, dividend.ex_date)
-        yield_ratio = None if prior is None else dividend.amount / prior
+        yield_ratio = None if prior is None or dividend.amount is None else dividend.amount / prior
         if config.exdiv.strict or (yield_ratio is not None and yield_ratio >= config.exdiv.block_yield_gte):
             shown = "unknown" if yield_ratio is None else f"{yield_ratio:.4f}"
             blocking = (
@@ -280,8 +289,9 @@ def _exdiv_decision(
                 f"Cash yield {shown} versus block_yield_gte {config.exdiv.block_yield_gte}."
             )
             break
+        shown = "unknown" if yield_ratio is None else f"{yield_ratio:.4f}"
         warning = (
-            f"Ex-div on the entry session {entry_day.isoformat()} is below the block yield. "
+            f"Ex-div on the entry session {entry_day.isoformat()} (cash yield {shown}). "
             "Ordinary ex-div warns and does not change entry, stop, target, or size."
         )
     if blocking is not None:

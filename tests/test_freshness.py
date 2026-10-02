@@ -8,7 +8,8 @@ from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
 from swing.data.factory import load_market_data
 from swing.data.models import BarSeries
-from tests.fake_yahoo import NY
+from swing.data.yahoo_events import YahooEvents
+from tests.fake_yahoo import NY, FakeYahoo
 from tests.synthetic import breakout_bars, equity_config, quiet_research
 
 # Thursday 2026-10-01 01:00 New York: the last completed session is Wednesday 2026-09-30.
@@ -28,9 +29,6 @@ class _Events:
     def earnings_calendar(self, ticker: str):
         return ()
 
-    def dividend_calendar(self, ticker: str):
-        return ()
-
 
 def _series(end: date = SIGNAL, **changes) -> BarSeries:
     base = BarSeries(
@@ -47,7 +45,14 @@ def _series(end: date = SIGNAL, **changes) -> BarSeries:
 
 def _decide(series: BarSeries, tmp_path):
     market = load_market_data(
-        "AAPL", SwingConfig(), env={}, now=NOW, cache_dir=tmp_path, bars=_Bars(series), events=_Events()
+        "AAPL",
+        SwingConfig(),
+        env={},
+        now=NOW,
+        cache_dir=tmp_path,
+        bars=_Bars(series),
+        events=_Events(),
+        yahoo=YahooEvents(FakeYahoo(), today=NOW.date()),
     )
     return analyze("AAPL", config=equity_config(), env={}, market=market, research_result=quiet_research())
 

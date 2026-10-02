@@ -14,7 +14,9 @@ from swing.data.models import (
     EarningsEvent,
     MarketData,
 )
+from swing.data.yahoo_events import YahooEvents
 from swing.research.models import ResearchResult
+from tests.fake_yahoo import FakeYahoo
 
 
 def _market() -> MarketData:
@@ -139,6 +141,7 @@ def test_missing_vendor_keys_attach_typed_errors_and_stay_no_trade(tmp_path):
         env={},
         cache_dir=tmp_path,
         now=__import__("datetime").datetime(2026, 10, 1, 18, 0, tzinfo=__import__("zoneinfo").ZoneInfo("America/New_York")),
+        yahoo=YahooEvents(FakeYahoo(calendar=RuntimeError("offline"), earnings=RuntimeError("offline"))),
     )
     env = analyze("AAPL", config=cfg, env={}, market=market, research_result=_research())
     assert env.decision is DecisionKind.NO_TRADE
@@ -146,6 +149,7 @@ def test_missing_vendor_keys_attach_typed_errors_and_stay_no_trade(tmp_path):
     assert env.data.status == "error"
     assert "missing_api_key:MASSIVE_API_KEY" in env.data.errors
     assert "missing_api_key:FINNHUB_API_KEY" in env.data.errors
+    assert any(error.startswith("vendor_error:yfinance:calendar+earnings_dates:upstream") for error in env.data.errors)
     assert env.data.next_open is not None
     assert env.data.next_open.endswith("-04:00")
     assert "09:30:00" in env.data.next_open
