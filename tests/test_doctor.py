@@ -58,6 +58,16 @@ def test_stale_nan_and_malformed_book(tmp_path: Path):
     assert "not rewritten" in book
 
 
+def test_doctor_names_the_home_and_the_fill_count(tmp_path: Path):
+    text = render_findings(_run(tmp_path, {}))
+    assert f"home: {tmp_path}" in text
+    assert "account.mode is cash" in text
+    assert "does not send orders" in text
+    assert "0 open lots; 0 closed fills" in text
+    assert "0.005" in text
+    assert "built-in stays 0.01" in text
+
+
 def test_universe_copy_states_the_floor_without_blocking(tmp_path: Path):
     missing = render_findings(_run(tmp_path, {}))
     assert "Floor is 20 names, target 30–50" in missing

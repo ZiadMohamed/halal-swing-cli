@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from swing.book import load_book
+from swing.book import closed_trades, load_book
 from swing.data.errors import VendorError, fix_line
 from swing.home import swing_home
 
@@ -33,7 +33,13 @@ def run_doctor(
 ) -> list[Finding]:
     findings = [
         Finding("python", True, f"{sys.version.split()[0]} {sys.executable}"),
+        Finding("home", True, str(home)),
         _env_files(env, home, cwd),
+        Finding(
+            "cash",
+            True,
+            "account.mode is cash. Size from settled cash, not buying power. This program does not send orders.",
+        ),
         _nested_clone(cwd),
         _universe(home),
         _book(home),
@@ -146,10 +152,19 @@ def _universe(home: Path) -> Finding:
 def _book(home: Path) -> Finding:
     path = home / "book.jsonl"
     try:
-        _events, lots = load_book(path)
+        events, lots = load_book(path)
     except ValueError as exc:
         return Finding("book", False, str(exc), "Fix that line. The file was not rewritten.")
-    return Finding("book", True, f"{len(lots)} open lots")
+    closed = len(closed_trades(events))
+    detail = f"{len(lots)} open lots; {closed} closed fills"
+    if closed < 20:
+        detail += (
+            ". Set risk.per_trade to 0.005 in ~/.swing/config.toml until 20 closed real fills, then 0.01. "
+            "The built-in stays 0.01."
+        )
+    else:
+        detail += ". Operator risk.per_trade can stay 0.01. The built-in stays 0.01."
+    return Finding("book", True, detail)
 
 
 def _spy(last_session: date | None, spy_session: date | None, spy_nan: bool) -> Finding:

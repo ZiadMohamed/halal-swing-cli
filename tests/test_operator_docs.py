@@ -35,6 +35,11 @@ def test_readme_records_the_satellite_operator_file():
     assert 'benchmark.symbol' in readme
     assert '"SPUS"' in readme
     assert "out of `universe.txt`" in readme
+    assert "plans.jsonl` only" in readme
+    assert "book.jsonl" in readme
+    analyze = (_ROOT / "src" / "swing" / "analyze.py").read_text(encoding="utf-8")
+    assert "ChecklistBrain" in analyze
+    assert "VARIANTS" not in analyze
     assert "does not rank" in readme
     assert "at least 20 user-screened USD stocks" in readme
     assert "30–50" in readme
