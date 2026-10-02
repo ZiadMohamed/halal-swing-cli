@@ -36,6 +36,10 @@ def test_readme_records_the_satellite_operator_file():
     assert '"SPUS"' in readme
     assert "out of `universe.txt`" in readme
     assert "does not rank" in readme
+    assert "at least 20 user-screened USD stocks" in readme
+    assert "30–50" in readme
+    assert "`TICKER ETF`" in readme
+    assert "SPY stays out of the file" in readme
 
 
 def test_example_config_still_matches_builtin_defaults():

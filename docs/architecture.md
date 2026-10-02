@@ -2,7 +2,7 @@
 
 Personal cash-long CLI. Not financial advice. Not a Shariah certification. Not a broker.
 
-The screened universe is `~/.swing/universe.txt`. The CLI never places, routes, or stages an order.
+The screened universe is `~/.swing/universe.txt`: at least 20 names, target 30–50, ETF rows tagged `ETF`, and SPY kept out of the file. The CLI never places, routes, or stages an order. The live checklist does not block a short list.
 
 ## Commands
 

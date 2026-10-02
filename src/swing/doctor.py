@@ -120,10 +120,27 @@ def _keys(env: dict[str, str], probe) -> list[Finding]:
 
 def _universe(home: Path) -> Finding:
     path = home / "universe.txt"
+    guidance = (
+        "Create that file with one screened ticker per line. "
+        "Floor is 20 names, target 30–50. Tag an ETF row as TICKER ETF. "
+        "Keep the core ETF and SPY out of the file. "
+        "See docs/decisions/SECTION8_ANSWERS.md."
+    )
     if not path.is_file():
-        return Finding("universe", False, f"missing {path}", "Create that file with one screened ticker per line.")
-    tickers = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip() and not line.startswith("#")]
-    return Finding("universe", True, f"{len(tickers)} tickers")
+        return Finding("universe", False, f"missing {path}", guidance)
+    tickers = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    spy = any(line.split()[0].upper() == "SPY" for line in tickers)
+    detail = f"{len(tickers)} tickers. Floor 20, target 30–50."
+    if len(tickers) < 20:
+        detail += " Thin universe: scan may still run."
+    if spy:
+        detail += " SPY is listed. It is a timing series, not a holding."
+    detail += " Tag ETF rows as TICKER ETF. Keep the core ETF and SPY out."
+    return Finding("universe", True, detail)
 
 
 def _book(home: Path) -> Finding:

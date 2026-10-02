@@ -22,7 +22,7 @@ Put `FINNHUB_API_KEY` and `MASSIVE_API_KEY` in `.env`. Doctor requires both free
 |---|---|
 | `config.toml` | Copy `config/swing.example.toml`. `equity_usd` is the satellite sleeve |
 | `.env` | Keys. Not committed. Mode `0600` |
-| `universe.txt` | Screened names. The core ETF stays out of this file |
+| `universe.txt` | At least 20 screened names, target 30–50. Tag ETF rows. Core ETF and SPY stay out |
 | `book.jsonl` | Buy and sell fills you record. Append-only |
 | `plans.jsonl` | Plans from `analyze`. Deduped |
 | `cache/bars/` | Daily bars |
@@ -36,6 +36,14 @@ The live checklist stays on v0. Built-in `SwingConfig` numbers are unchanged. `~
 - `benchmark.symbol` is `"SPUS"`, or the screened core ETF you actually hold, so a later review can compare the sleeve with that core. The live loader does not accept `benchmark.symbol` yet. `swing review` still compares with SPUS. Do not add that key to `config.toml` until the loader accepts it.
 - Keep the core ETF out of `universe.txt`. The CLI manages the satellite only.
 - `account.mode` stays `"cash"`. Size from settled cash, not buying power. You type the orders. This program does not send them. The recorded pricing choice for this book's order size is IBKR Pro Tiered. Re-read the schedule in the account portal before relying on it.
+
+## Universe
+
+`~/.swing/universe.txt` should hold at least 20 user-screened USD stocks. The working target is 30–50. One name per line. Tag an ETF only when you have already screened it, as `TICKER ETF`. The live earnings skip still uses vendor instrument type. Analyze does not read that tag yet.
+
+Keep the core ETF out of the file so the CLI does not swing the core. SPY stays out of the file. It is a timing series, not a holding.
+
+Below 20 names, a scan may still run. Doctor labels that list a thin universe. The live checklist has no hard block on the count. Names that fail a later liquidity floor are skipped with a reason. Count names that pass, not only lines in the file. See [docs/decisions/SECTION8_ANSWERS.md](docs/decisions/SECTION8_ANSWERS.md).
 
 ## v1 config surface (not wired)
 
