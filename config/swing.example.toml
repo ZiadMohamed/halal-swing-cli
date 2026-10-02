@@ -1,10 +1,18 @@
-# Locked defaults for the personal swing checklist.
-# Not financial advice. Not a Shariah certification.
+# Live v0 checklist defaults. Not financial advice. Not a Shariah certification.
 #
-# macOS: copy to ~/Library/Application Support/swing/config.toml
-# or pass: swing analyze TICKER --config /path/to/swing.toml
+# Copy to ~/.swing/config.toml. This example is not loaded unless you point the CLI at it.
 # A repo-root swing.toml is also read and is gitignored.
-# This example is not loaded unless you point the CLI at it.
+# Recorded operator choices: docs/decisions/SECTION8_ANSWERS.md
+#
+# The values below are the built-ins. Leave them as they are in this file.
+# Set these only in your copy of ~/.swing/config.toml:
+#   account.equity_usd — satellite sleeve in USD, starting near 20% of total USD equity.
+#     Not total net worth. Unset here, so the example matches the built-in.
+#   risk.per_trade — 0.005 until book.jsonl has 20 closed real fills, then 0.01.
+#     The built-in below stays 0.01. Plans are not fills.
+# benchmark.symbol is "SPUS", or the screened core ETF you actually hold.
+# The live loader rejects that key. swing review still compares with SPUS.
+# Keep the core ETF out of universe.txt.
 #
 # Time-stops are intentionally absent. They were not locked.
 
@@ -14,13 +22,15 @@ max_concurrent_positions = 4
 [account]
 mode = "cash"
 longs_only = true
-# Set cash equity in USD before sizing. Unset refuses the trade instead of guessing.
-# v0 does not convert other currencies.
+# Satellite sleeve in USD, starting near 20% of total USD equity. Not total net worth.
+# Unset refuses the trade instead of guessing. v0 does not convert other currencies.
 # A single run can pass --equity USD instead. That override does not change config_hash.
 # The CLI prints the plan. Type the cash long in Interactive Brokers. It does not send orders.
-# equity_usd = 100000
+# equity_usd =
 
 [risk]
+# Built-in stays 0.01, including backtests.
+# In ~/.swing/config.toml use 0.005 until 20 closed real fills, then 0.01.
 per_trade = 0.01
 
 [heat]

@@ -106,7 +106,7 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         metavar="USD",
         help=(
-            "Account equity in USD for this run. Overrides [account].equity_usd. "
+            "Satellite sleeve equity in USD for this run, not total net worth. Overrides [account].equity_usd. "
             "Does not change config_hash. v0 does not convert other currencies. "
             "If neither this flag nor the TOML value is set, "
             "the decision stays NO_TRADE / EQUITY_UNSET."

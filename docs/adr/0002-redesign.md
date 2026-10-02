@@ -19,6 +19,7 @@ The v0 tool checked one ticker, appended every plan to a journal, called a premi
 ## Consequences
 
 - `swing analyze` still uses the mutex, the 2R target, and the heat caps.
+- Operator defaults for the satellite sleeve, the first 20 closed fills, and the benchmark ticker are in `docs/decisions/SECTION8_ANSWERS.md`. They are not built-in `SwingConfig` changes.
 - `exit.mode`, `regime.gate`, slot count, liquidity floors, and the entry cap exist as backtest variant fields. They are not yet the live config, because v1 was not shipped.
 - A later change to the live book needs a new harness run, not a grid search.
 - The CLI still does not send orders.

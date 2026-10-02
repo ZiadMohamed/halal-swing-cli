@@ -20,12 +20,22 @@ Put `FINNHUB_API_KEY` and `MASSIVE_API_KEY` in `.env` if you have them. The shel
 
 | File | Use |
 |---|---|
-| `config.toml` | Copy `config/swing.example.toml` and set `equity_usd` |
-| `.env` | Keys. Not committed |
-| `universe.txt` | One screened ticker per line |
+| `config.toml` | Copy `config/swing.example.toml`. `equity_usd` is the satellite sleeve |
+| `.env` | Keys. Not committed. Mode `0600` |
+| `universe.txt` | Screened names. The core ETF stays out of this file |
 | `book.jsonl` | Buy and sell fills you record. Append-only |
 | `plans.jsonl` | Plans from `analyze`. Deduped |
 | `cache/bars/` | Daily bars |
+
+## Operator config
+
+The live checklist stays on v0. Built-in `SwingConfig` numbers are unchanged. `~/.swing/config.toml` is the operator file, and it is not in git. The recorded choices are in [docs/decisions/SECTION8_ANSWERS.md](docs/decisions/SECTION8_ANSWERS.md).
+
+- `account.equity_usd` is the satellite sleeve in USD, not total net worth. Start near 20% of total USD equity. The other 80% stays in a screened USD equity ETF held outside this CLI. The plan's examples are SPUS and HLAL. This program does not rank them.
+- `risk.per_trade` in code stays `0.01`. In the operator file, set `0.005` until `book.jsonl` has 20 closed real fills, then set it back to `0.01`. Plans are not fills. Change the file by hand. There is no automatic ratchet. Twenty closes are a process check, not proof of an edge.
+- `benchmark.symbol` is `"SPUS"`, or the screened core ETF you actually hold, so a later review can compare the sleeve with that core. The live loader does not accept `benchmark.symbol` yet. `swing review` still compares with SPUS. Do not add that key to `config.toml` until the loader accepts it.
+- Keep the core ETF out of `universe.txt`. The CLI manages the satellite only.
+- `account.mode` stays `"cash"`. Size from settled cash, not buying power. You type the orders. This program does not send them. The recorded pricing choice for this book's order size is IBKR Pro Tiered. Re-read the schedule in the account portal before relying on it.
 
 An old `~/Library/Application Support/swing` folder is copied once and left in place.
 

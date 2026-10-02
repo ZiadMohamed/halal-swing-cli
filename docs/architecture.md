@@ -45,6 +45,8 @@ Finnhub premium endpoints are not called. Context.dev is not a dependency.
 
 The live checklist is still the v0 book: three triggers with the mutex, a 1.5×ATR stop, a 2R target, heat and four positions, and the earnings blackout. v1 (trend filter, momentum rank, regime gate, earnings exit, five slots, trail) was measured and not switched on. See [docs/backtests/v1-gate.md](backtests/v1-gate.md). In the 2014 window the random-rank book had the higher Sharpe.
 
+Operator equity, the half-size risk for the first 20 closed fills, and the benchmark ticker are recorded in [docs/decisions/SECTION8_ANSWERS.md](decisions/SECTION8_ANSWERS.md). `account.equity_usd` in `~/.swing/config.toml` is the satellite sleeve only. Those choices do not change the built-in checklist.
+
 `swing backtest` can still run v1 and the Appendix A variants on cached bars.
 
 ## Book
