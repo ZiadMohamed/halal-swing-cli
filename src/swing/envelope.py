@@ -1,7 +1,7 @@
-"""Decision envelope schema 1.1.0.
+"""Decision envelope schema 2.0.0.
 
-`instructions` is additive and null unless the decision is ENTER_LONG.
-The schema version stays 1.1.0.
+Research and the compact flag are gone. `instructions` is null unless the
+decision is ENTER_LONG. Decisions are ENTER_LONG and NO_TRADE.
 """
 
 from __future__ import annotations
@@ -53,22 +53,6 @@ class ShariahView(_Strict):
     note: str
 
 
-class ResearchHitView(_Strict):
-    title: str
-    url: str
-    snippet: str
-
-
-class ResearchView(_Strict):
-    status: Literal["ok", "skipped", "error"]
-    provider: str
-    reason: str | None = None
-    query: str | None = None
-    hits: list[ResearchHitView] = Field(default_factory=list)
-    advisory_only: Literal[True] = True
-    affects_checklist_math: Literal[False] = False
-
-
 class EarningsBrief(_Strict):
     """Announcement date T. Chat 3 applies the blackout. This is not a decision."""
 
@@ -113,7 +97,7 @@ class DataView(_Strict):
 
 
 class Envelope(_Strict):
-    schema_version: Literal["1.1.0"] = "1.1.0"
+    schema_version: Literal["2.0.0"] = "2.0.0"
     ticker: str
     decision: DecisionKind
     reasons: list[Reason]
@@ -124,11 +108,9 @@ class Envelope(_Strict):
     instructions: Instructions | None = None
     equity_usd: float | None = Field(default=None, ge=0)
     shariah: ShariahView
-    research: ResearchView
     data: DataView = Field(default_factory=DataView)
     disclaimer: str
     config_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    compact: bool
     gates: list[GateView]
     stage: Literal["skeleton", "partial", "checklist"] = "skeleton"
 

@@ -36,7 +36,7 @@ uv run swing analyze AAPL --json
 
 Path: `~/Library/Application Support/swing/journal.jsonl`. `SWING_DATA_DIR` overrides the root. Linux CI uses `$XDG_DATA_HOME/swing` or `~/.local/share/swing`.
 
-One JSON object per line. Append only when the decision is `ENTER_LONG`, after the envelope exists, from the CLI. The renderer does not touch the file. `NO_TRADE` and `BLOCK` write nothing. A second `ENTER_LONG` appends a second line. Lines are never rewritten or deleted.
+One JSON object per line. `analyze` no longer appends. `NO_TRADE` writes nothing. Lines are never rewritten or deleted.
 
 `size_shares` is copied from the plan. `risk_fraction` is `size_shares * (entry - stop) / equity_usd` for the equity that sized that plan. Sector is stored when `--sector` was passed. Blank sectors are not one bucket. A line that is not JSON, or that has no `risk_fraction`, stops the command (exit 2) so heat is not computed from a partial book.
 

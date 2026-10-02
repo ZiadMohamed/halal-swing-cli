@@ -22,10 +22,9 @@ from tests.synthetic import (
     WINTER_OPEN,
     equity_config,
     install_market,
-    quiet_research,
 )
 
-DEFAULT_HASH = "6aee6dc8f4b494c5b4e3f81821fe9b3ae7f9ef8944b12ee8e7d8a8a0f49da0b5"
+DEFAULT_HASH = "fc4f0eb57de568e7f49d68f52d6935e5bae3a296c3e18d1faf2b28c73cbb1628"
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +53,7 @@ def _equity_config(tmp_path: Path, equity: float | None = 100_000.0) -> Path:
         account = f"equity_usd = {equity}\n"
     return _config(
         tmp_path,
-        f"[account]\n{account}[research]\nenabled = false\n",
+        f"[account]\n{account}",
     )
 
 
@@ -92,7 +91,9 @@ def test_enter_long_prints_the_plan_and_summer_clocks_without_journaling(
         assert "AAPL  ENTER_LONG" in text
     assert f"next_open America/New_York {NY_SUMMER}" in text
     assert f"next_open Africa/Cairo {CAIRO_SUMMER}" in text
-    assert "  data_auth: pass" in text
+    assert "plan setup=" in text
+    assert "config_hash" in text
+    assert "data_auth:" not in text
     assert text.rstrip("\n").endswith(DISCLAIMER)
     assert not path.exists()
 
@@ -119,7 +120,7 @@ def test_no_trade_and_block_do_not_append(tmp_path: Path, monkeypatch: pytest.Mo
     assert "EARNINGS_BLACKOUT" in text
     assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
-    unset = _config(tmp_path, "[research]\nenabled = false\n")
+    unset = _config(tmp_path, "")
     install_market(monkeypatch, next_open=SUMMER_OPEN)
     code, text, _err = _run(["analyze", "AAPL", "--config", str(unset)])
     assert code == 0
@@ -127,15 +128,15 @@ def test_no_trade_and_block_do_not_append(tmp_path: Path, monkeypatch: pytest.Mo
     assert "EQUITY_UNSET" in text
     assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
-    blocked = _config(tmp_path, '[account]\nmode = "margin"\n[research]\nenabled = false\n')
-    code, text, _err = _run(["analyze", "AAPL", "--config", str(blocked)])
-    assert code == 0
-    assert "AAPL  BLOCK" in text
-    assert "BLOCK_MARGIN" in text
+    blocked = _config(tmp_path, '[account]\nmode = "margin"\n')
+    code, text, err = _run(["analyze", "AAPL", "--config", str(blocked)])
+    assert code == 2
+    assert text == ""
+    assert "margin" in err.lower() or "mode" in err.lower()
     assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
 
-def test_warn_exdiv_and_spy_r2_keep_the_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_warn_exdiv_keeps_the_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     install_market(
         monkeypatch,
         next_open=SUMMER_OPEN,
@@ -148,10 +149,10 @@ def test_warn_exdiv_and_spy_r2_keep_the_plan(tmp_path: Path, monkeypatch: pytest
     assert payload["decision"] == DecisionKind.ENTER_LONG.value
     codes = {item["code"] for item in payload["warnings"]}
     assert ReasonCode.WARN_EXDIV.value in codes
-    assert ReasonCode.WARN_SPY_R2.value in codes
+    assert "WARN_SPY_R2" not in codes
     assert payload["plan"]["size_shares"] >= 1
     assert payload["shariah"]["screened"] is False
-    assert payload["research"]["affects_checklist_math"] is False
+    assert "research" not in payload
     assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
 
@@ -224,7 +225,6 @@ def test_analyze_without_equity_still_refuses_to_invent_one(tmp_path: Path, monk
         config=equity_config(None),
         env={},
         fetch_market=True,
-        research_result=quiet_research(),
     )
     assert envelope.decision is DecisionKind.NO_TRADE
     assert envelope.reasons[0].code is ReasonCode.EQUITY_UNSET

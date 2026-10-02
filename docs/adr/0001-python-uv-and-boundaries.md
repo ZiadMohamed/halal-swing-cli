@@ -19,10 +19,10 @@ Split the process into four areas that do not share mutable state:
 |---|---|---|
 | Data (Chat 2) | Bars, events, calendar, Parquet cache | Setup rules, order placement |
 | Brain (Chat 3) | Gates, indicators, setups, mutex, size, heat | HTTP clients, terminal layout |
-| Output (Chat 4) | Envelope rendering, `--json`, `--compact`, Cairo/New York next-open text | Indicator math |
-| Hardening (Chat 5) | Fixtures, paper JSONL journal, IBKR stub remains unwired | Live orders |
+| Output (Chat 4) | Envelope rendering, `--json`, `--explain`, Cairo/New York next-open text | Indicator math |
+| Hardening (Chat 5) | Fixtures, paper JSONL journal | Live orders |
 
-Live web search sits beside the brain, not inside it. Context.dev (`POST /web/search`) is the default provider. It enriches the envelope with advisory headlines. It is not an OHLC vendor. Finnhub, when Chat 2 adds it, is events and calendars only.
+Finnhub is events and calendars only. There is no news client. Context.dev is not a dependency.
 
 ## Why this stack
 
@@ -36,4 +36,4 @@ Live web search sits beside the brain, not inside it. Context.dev (`POST /web/se
 - macOS is the documented install path. Linux is a fallback for CI and this cloud agent, and path code says so.
 - Chat 2 added `yfinance`, `pyarrow`, and `exchange-calendars`. Massive and Finnhub use the stdlib HTTP client.
 - Config hash changes if a later chat changes a hashed field. New policy belongs in `SwingConfig` on purpose, not in ad-hoc constants.
-- `research.affects_checklist_math` is fixed `false`. News text cannot move entry, stop, target, size, or next_open.
+- News text is not an input. It cannot move entry, stop, target, size, or next_open.

@@ -21,7 +21,7 @@ class _Strict(BaseModel):
 
 
 class AccountConfig(_Strict):
-    mode: Literal["cash", "margin"] = "cash"
+    mode: Literal["cash"] = "cash"
     longs_only: Literal[True] = True
     equity_usd: float | None = Field(default=None, ge=0)
 
@@ -78,12 +78,6 @@ class StopsConfig(_Strict):
     reward_r: float = Field(default=2.0, gt=0)
 
 
-class SpyR2Config(_Strict):
-    threshold: float = Field(default=0.70, gt=0, le=1)
-    lookback_days: int = Field(default=60, ge=1)
-    effect: Literal["warn"] = "warn"
-
-
 class EarningsConfig(_Strict):
     strict: bool = True
     blackout_before_days: int = 2
@@ -97,19 +91,9 @@ class ExDivConfig(_Strict):
     block_yield_gte: float = 0.01
 
 
-class OutputConfig(_Strict):
-    compact: bool = False
-
-
 class DataConfig(_Strict):
     bars_provider: Literal["yfinance", "massive"] = "yfinance"
     events_provider: Literal["finnhub"] = "finnhub"
-
-
-class ResearchConfig(_Strict):
-    provider: Literal["context"] = "context"
-    enabled: bool = True
-    affects_checklist_math: Literal[False] = False
 
 
 class JournalConfig(_Strict):
@@ -134,12 +118,9 @@ class SwingConfig(_Strict):
     max_concurrent_positions: int = Field(default=4, ge=1)
     setups: SetupsConfig = Field(default_factory=SetupsConfig)
     stops: StopsConfig = Field(default_factory=StopsConfig)
-    spy_r2: SpyR2Config = Field(default_factory=SpyR2Config)
     earnings: EarningsConfig = Field(default_factory=EarningsConfig)
     exdiv: ExDivConfig = Field(default_factory=ExDivConfig)
-    output: OutputConfig = Field(default_factory=OutputConfig)
     data: DataConfig = Field(default_factory=DataConfig)
-    research: ResearchConfig = Field(default_factory=ResearchConfig)
     journal: JournalConfig = Field(default_factory=JournalConfig)
     shariah: ShariahConfig = Field(default_factory=ShariahConfig)
     timezone: TimezoneConfig = Field(default_factory=TimezoneConfig)

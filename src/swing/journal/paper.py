@@ -27,7 +27,7 @@ class PaperJournal:
     ) -> None:
         """Append one line when the envelope is ENTER_LONG.
 
-        `NO_TRADE` and `BLOCK` leave the file untouched, including not creating it.
+        `NO_TRADE` leaves the file untouched, including not creating it.
         `risk_fraction` is `size_shares * (entry - stop) / equity_usd`. Share
         count is copied from the plan. Equity is never invented.
         """

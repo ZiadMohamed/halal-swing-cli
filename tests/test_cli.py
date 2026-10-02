@@ -1,4 +1,4 @@
-"""CLI boots: help, JSON envelope, compact default off."""
+"""CLI boots: help, JSON envelope, card by default, gates on --explain."""
 
 import json
 import subprocess
@@ -28,64 +28,53 @@ def test_analyze_help_exits_zero(capsys):
     out = capsys.readouterr().out
     assert "analyze" in out
     assert "Not financial advice" in out
-    assert "--compact" in out
+    assert "--explain" in out
     assert "--json" in out
-    assert "--simple" in out
+    assert "--compact" not in out
+    assert "--simple" not in out
     assert "--sector" in out
 
 
-def test_json_stub_is_parseable_and_compact_defaults_off(capsys, monkeypatch):
-    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
+def test_json_is_parseable_and_carries_the_decision(capsys, monkeypatch):
     monkeypatch.delenv("SWING_CONFIG", raising=False)
     code = main(["analyze", "AAPL", "--json"])
     captured = capsys.readouterr()
     assert code == 0
     payload = json.loads(captured.out)
     assert captured.out.endswith("\n")
+    assert payload["schema_version"] == "2.0.0"
     assert payload["decision"] == "NO_TRADE"
-    assert payload["compact"] is False
+    assert payload["reasons"][0]["code"] == "NO_MARKET_DATA"
+    assert payload["plan"] is None
     assert payload["config_hash"]
     assert payload["disclaimer"] == DISCLAIMER
     assert payload["ticker"] == "AAPL"
+    assert "research" not in payload
     assert "ENTER_SHORT" not in captured.out
 
 
-def test_compact_text_keeps_reason_gates_and_disclaimer(capsys, monkeypatch):
-    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
-    code = main(["analyze", "AAPL", "--compact"])
+def test_card_hides_gates_and_explain_shows_them(capsys, monkeypatch):
+    monkeypatch.delenv("SWING_CONFIG", raising=False)
+    code = main(["analyze", "AAPL"])
     assert code == 0
-    text = capsys.readouterr().out
-    assert "NO_TRADE" in text
-    assert "NO_MARKET_DATA" in text
-    assert "missing_api_key" in text
-    assert "Not financial advice" in text
-    assert "brain not run" not in text
-    assert "data_auth=no_trade" in text
-    assert "liquidity=not_run" in text
+    card = capsys.readouterr().out
+    assert "NO_TRADE" in card
+    assert "NO_MARKET_DATA" in card
+    assert "config_hash" in card
+    assert "Not financial advice" in card
+    assert "data_auth:" not in card
 
-
-def test_config_compact_is_honored_without_the_flag(tmp_path, capsys, monkeypatch):
-    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
-    path = tmp_path / "swing.toml"
-    path.write_text("[output]\ncompact = true\n", encoding="utf-8")
-    code = main(["analyze", "AAPL", "--json", "--config", str(path)])
+    code = main(["analyze", "AAPL", "--explain"])
     assert code == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["compact"] is True
-    assert "Not financial advice" in payload["disclaimer"]
-
-
-def test_compact_flag_is_opt_in(capsys, monkeypatch):
-    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
-    code = main(["analyze", "AAPL", "--json", "--compact"])
-    assert code == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["compact"] is True
-    assert "Not financial advice" in payload["disclaimer"]
+    explained = capsys.readouterr().out
+    assert "NO_MARKET_DATA" in explained
+    assert "  data_auth: no_trade" in explained
+    assert "  liquidity: not_run" in explained
+    assert explained.endswith(DISCLAIMER + "\n")
 
 
 def test_human_output_includes_disclaimer_and_hash(capsys, monkeypatch):
-    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
+    monkeypatch.delenv("SWING_CONFIG", raising=False)
     code = main(["analyze", "AAPL"])
     assert code == 0
     text = capsys.readouterr().out
@@ -93,11 +82,10 @@ def test_human_output_includes_disclaimer_and_hash(capsys, monkeypatch):
     assert "config_hash" in text
     assert "Not financial advice" in text
     assert "brain not run" not in text
-    assert "  data_auth: no_trade" in text
 
 
 def test_verbose_logs_do_not_pollute_json_stdout(capsys, monkeypatch):
-    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
+    monkeypatch.delenv("SWING_CONFIG", raising=False)
     code = main(["analyze", "AAPL", "--json", "--verbose"])
     assert code == 0
     out = capsys.readouterr().out
@@ -105,7 +93,7 @@ def test_verbose_logs_do_not_pollute_json_stdout(capsys, monkeypatch):
 
 
 def test_attached_market_data_stays_no_trade(capsys, monkeypatch):
-    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
+    monkeypatch.delenv("SWING_CONFIG", raising=False)
     market = MarketData(
         ticker="AAPL",
         status="ok",
@@ -149,7 +137,7 @@ def test_attached_market_data_stays_no_trade(capsys, monkeypatch):
 
 
 def test_text_uses_the_configured_user_clock(tmp_path, capsys, monkeypatch):
-    monkeypatch.delenv("CONTEXT_DEV_API_KEY", raising=False)
+    monkeypatch.delenv("SWING_CONFIG", raising=False)
     path = tmp_path / "swing.toml"
     path.write_text('[timezone]\nuser = "Europe/London"\n', encoding="utf-8")
     market = MarketData(

@@ -2,7 +2,7 @@
 
 import pytest
 
-from swing.brain.indicators import atr, ema, r_squared, rsi, sma
+from swing.brain.indicators import atr, ema, rsi, sma
 
 
 def test_sma_uses_the_last_window_only():
@@ -35,12 +35,6 @@ def test_wilder_atr_smooths_true_range():
     closes = (9, 10.5, 8)
     # TRs: 2, 2, 3.5. Seed ATR (2+2)/2 = 2. Next (2 + 3.5) / 2 = 2.75.
     assert atr(highs, lows, closes, 2) == pytest.approx(2.75)
-
-
-def test_r_squared_is_one_for_a_perfect_line_and_none_when_flat():
-    assert r_squared((1.0, 2.0, 3.0), (2.0, 4.0, 6.0)) == pytest.approx(1)
-    assert r_squared((1.0, 2.0, 3.0), (3.0, 2.0, 1.0)) == pytest.approx(1)
-    assert r_squared((1.0, 1.0, 1.0), (1.0, 2.0, 3.0)) is None
 
 
 def test_indicators_do_not_read_a_raw_close_argument():

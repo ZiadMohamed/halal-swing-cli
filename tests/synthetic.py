@@ -9,7 +9,6 @@ from swing.config import SwingConfig
 from swing.data.models import BarSeries, DailyBar, DividendEvent, EarningsEvent, MarketData
 from swing.disclaimer import DISCLAIMER
 from swing.envelope import Envelope
-from swing.research.models import ResearchResult
 
 SIGNAL_DAY = date(2026, 9, 30)
 SUMMER_OPEN = "2026-10-05T09:30:00-04:00"
@@ -20,13 +19,9 @@ NY_SUMMER = "2026-10-05T09:30:00-04:00"
 NY_WINTER = "2026-01-02T09:30:00-05:00"
 
 
-def quiet_research() -> ResearchResult:
-    return ResearchResult(status="skipped", provider="none", reason="disabled", query=None, hits=())
-
-
 def equity_config(equity: float | None = 100_000.0) -> SwingConfig:
     account: dict[str, object] = {"equity_usd": equity} if equity is not None else {}
-    return SwingConfig.model_validate({"account": account, "research": {"enabled": False}})
+    return SwingConfig.model_validate({"account": account})
 
 
 def weekdays(count: int, end: date) -> list[date]:
@@ -152,16 +147,8 @@ def enter_envelope(
             "setup": setup,
         },
         shariah={"screened": False, "status": "user_supplied", "note": "user supplied"},
-        research={
-            "status": "skipped",
-            "provider": "none",
-            "reason": "disabled",
-            "advisory_only": True,
-            "affects_checklist_math": False,
-        },
         disclaimer=DISCLAIMER,
         config_hash="ab" * 32,
-        compact=False,
         gates=[],
         stage="checklist",
     )
@@ -177,41 +164,8 @@ def no_trade_envelope(ticker: str = "AAPL") -> Envelope:
         side=None,
         plan=None,
         shariah={"screened": False, "status": "user_supplied", "note": "user supplied"},
-        research={
-            "status": "skipped",
-            "provider": "none",
-            "reason": "disabled",
-            "advisory_only": True,
-            "affects_checklist_math": False,
-        },
         disclaimer=DISCLAIMER,
         config_hash="ab" * 32,
-        compact=False,
         gates=[],
         stage="partial",
-    )
-
-
-def block_envelope(ticker: str = "AAPL") -> Envelope:
-    return Envelope(
-        ticker=ticker,
-        decision=DecisionKind.BLOCK,
-        reasons=[],
-        warnings=[],
-        confidence=None,
-        side=None,
-        plan=None,
-        shariah={"screened": False, "status": "user_supplied", "note": "user supplied"},
-        research={
-            "status": "skipped",
-            "provider": "none",
-            "reason": "not_run_product_block",
-            "advisory_only": True,
-            "affects_checklist_math": False,
-        },
-        disclaimer=DISCLAIMER,
-        config_hash="ab" * 32,
-        compact=False,
-        gates=[],
-        stage="skeleton",
     )

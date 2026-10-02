@@ -1,6 +1,5 @@
 """Checklist brain fixtures. No network. Bars are synthetic."""
 
-import inspect
 import math
 from datetime import date, timedelta
 
@@ -11,13 +10,12 @@ from swing.analyze import analyze
 from swing.brain.checklist import ChecklistBrain, earnings_window
 from swing.brain.indicators import atr, ema
 from swing.brain.positions import OpenPosition
-from swing.codes import SHARIAH_REASON_CODES, DecisionKind, ReasonCode
+from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
 from swing.data.calendar import NyseCalendar
 from swing.data.models import BarSeries, DailyBar, DividendEvent, EarningsEvent, MarketData
 from swing.disclaimer import DISCLAIMER
 from swing.envelope import Envelope
-from swing.research.models import ResearchHit, ResearchResult
 
 NEXT_OPEN = "2026-10-01T09:30:00-04:00"
 SIGNAL_DAY = date(2026, 9, 30)
@@ -142,10 +140,6 @@ def _codes(result) -> set[ReasonCode]:
     return {item.code for item in (*result.reasons, *result.warnings)}
 
 
-def _quiet() -> ResearchResult:
-    return ResearchResult(status="skipped", provider="none", reason="disabled", query=None, hits=())
-
-
 def test_blackout_window_uses_nyse_sessions_across_the_july_holiday():
     start, end = earnings_window(NyseCalendar(), date(2026, 7, 6), 2, 1)
     assert start == date(2026, 7, 1)
@@ -173,7 +167,6 @@ def test_breakout_enters_long_from_the_signal_close_with_a_1_5_atr_stop_and_2r_t
     assert plan.size_shares == math.floor(100_000 * 0.01 / (plan.entry - plan.stop))
     assert plan.size_shares >= 1
     assert all(gate.status == "pass" for gate in result.gates)
-    assert _codes(result).isdisjoint(SHARIAH_REASON_CODES)
     assert "ENTER_SHORT" not in result.decision.value
 
 
@@ -232,13 +225,14 @@ def test_short_history_is_illiquid_and_does_not_reach_earnings():
     assert _gate(result, "earnings") == "not_run"
 
 
-def test_zero_range_fails_the_adr_gate():
+def test_zero_range_does_not_use_an_adr_gate():
     bars = _series([100.0] * 30, SIGNAL_DAY, high_pad=0.0, low_pad=0.0)
     result = ChecklistBrain().evaluate("AAPL", _config(), _market(bars))
-    assert result.reasons[0].code is ReasonCode.ADR_TOO_QUIET
-    assert _gate(result, "adr") == "no_trade"
-    assert _gate(result, "setup_mutex") == "not_run"
+    assert result.decision is DecisionKind.NO_TRADE
+    assert result.reasons[0].code is ReasonCode.NO_SETUP
+    assert "adr" not in {gate.name for gate in result.gates}
     assert _gate(result, "heat") == "pass"
+    assert _gate(result, "setup_mutex") == "no_trade"
 
 
 def test_no_matching_setup_is_no_trade():
@@ -336,40 +330,11 @@ def test_ordinary_exdiv_warns_and_a_large_distribution_blocks():
     assert all(item.code is not ReasonCode.WARN_EXDIV for item in ignored.warnings)
 
 
-def test_high_spy_r2_warns_and_does_not_change_the_plan():
-    bars = _bo_bars()
-    spy = BarSeries(
-        ticker="SPY",
-        provider="yfinance",
-        bars=bars,
-        corp_action_suspect=False,
-        corp_action_reasons=(),
-        adjustment="split_and_dividend",
-    )
-    warned = ChecklistBrain().evaluate("AAPL", _config(), _market(bars), spy_bars=spy)
-    quiet = ChecklistBrain().evaluate("AAPL", _config(), _market(bars))
-    assert warned.decision is DecisionKind.ENTER_LONG
-    assert quiet.decision is DecisionKind.ENTER_LONG
-    assert any(item.code is ReasonCode.WARN_SPY_R2 for item in warned.warnings)
-    assert _gate(warned, "regime") == "warn"
-    assert warned.plan is not None and quiet.plan is not None
-    assert warned.plan.model_dump() == quiet.plan.model_dump()
-    assert all(item.code is not ReasonCode.WARN_SPY_R2 for item in quiet.warnings)
-
-
-def test_suspect_spy_series_does_not_warn_or_block():
-    bars = _bo_bars()
-    spy = BarSeries(
-        ticker="SPY",
-        provider="yfinance",
-        bars=bars,
-        corp_action_suspect=True,
-        corp_action_reasons=("unexplained_gap",),
-        adjustment="split",
-    )
-    result = ChecklistBrain().evaluate("AAPL", _config(), _market(bars), spy_bars=spy)
+def test_regime_gate_passes_without_a_spy_fetch():
+    result = ChecklistBrain().evaluate("AAPL", _config(), _market(_bo_bars()))
     assert result.decision is DecisionKind.ENTER_LONG
-    assert all(item.code is not ReasonCode.WARN_SPY_R2 for item in result.warnings)
+    assert _gate(result, "regime") == "pass"
+    assert "spy_bars" not in ChecklistBrain.evaluate.__code__.co_varnames
 
 
 def test_unset_equity_does_not_invent_a_size():
@@ -397,7 +362,7 @@ def test_heat_and_position_count_stop_before_a_setup():
     counted = ChecklistBrain().evaluate("AAPL", _config(), market, positions=full)
     assert counted.reasons[0].code is ReasonCode.MAX_POSITIONS
     assert _gate(counted, "heat") == "no_trade"
-    assert _gate(counted, "adr") == "not_run"
+    assert _gate(counted, "setup_mutex") == "not_run"
 
     heavy = tuple(OpenPosition(ticker=f"T{i}", risk_fraction=0.02, sector=f"s{i}") for i in range(3))
     total = ChecklistBrain().evaluate("AAPL", _config(), market, positions=heavy)
@@ -426,59 +391,36 @@ def test_missing_next_open_stops_after_the_plan_math():
     assert _gate(result, "next_open") == "no_trade"
 
 
-def test_checklist_math_ignores_research_and_fetches_spy_with_the_same_loader(monkeypatch):
-    calls: list[tuple[str, int | None]] = []
+def test_analyze_loads_the_ticker_and_does_not_fetch_spy(monkeypatch):
+    calls: list[str] = []
 
     def fake(ticker: str, config: SwingConfig, **kwargs):
-        calls.append((ticker, kwargs.get("lookback_sessions")))
-        if ticker == "SPY":
-            return _market(_bo_bars())
+        del config, kwargs
+        calls.append(ticker)
         return _market(_bo_bars())
 
     monkeypatch.setattr("swing.analyze.load_market_data", fake)
-    note = ResearchResult(
-        status="ok",
-        provider="fake",
-        reason=None,
-        query="AAPL stock news",
-        hits=(ResearchHit(title="headline", url="https://example.com", snippet="s"),),
-    )
     config = _config()
-    entered = analyze("AAPL", config=config, env={}, fetch_market=True, research_result=note)
-    quiet = analyze("AAPL", config=config, env={}, fetch_market=True, research_result=_quiet())
+    entered = analyze("AAPL", config=config, env={}, fetch_market=True)
+    again = analyze("AAPL", config=config, env={}, fetch_market=True)
     assert entered.decision is DecisionKind.ENTER_LONG
     assert entered.stage == "checklist"
-    assert entered.confidence == "checklist_only"
     assert entered.plan is not None and entered.plan.setup == "BO_RVOL"
-    assert entered.plan.model_dump() == quiet.plan.model_dump()  # type: ignore[union-attr]
-    assert entered.reasons == quiet.reasons
-    assert any(item.code is ReasonCode.WARN_SPY_R2 for item in entered.warnings)
-    assert entered.research.affects_checklist_math is False
-    assert calls[0][0] == "AAPL"
-    assert ("SPY", config.spy_r2.lookback_days) in calls
-    assert "research" not in inspect.signature(ChecklistBrain.evaluate).parameters
-    source = inspect.getsource(ChecklistBrain)
-    assert "LiveResearch" not in source
-    assert "zoya" not in source.lower()
-    assert "finnhub" not in source.lower()
+    assert entered.plan.model_dump() == again.plan.model_dump()  # type: ignore[union-attr]
+    assert calls == ["AAPL", "AAPL"]
+    source = ChecklistBrain.evaluate.__code__.co_varnames
+    assert "research" not in source
+    assert "spy_bars" not in source
 
 
-def test_analyze_stage_is_partial_until_every_gate_has_run_and_skeleton_on_a_product_block():
-    partial = analyze("AAPL", config=_config(), env={}, market=_market(_bo_bars(), events_known=False), research_result=_quiet())
+def test_analyze_stage_is_partial_until_every_gate_has_run():
+    partial = analyze("AAPL", config=_config(), env={}, market=_market(_bo_bars(), events_known=False))
     assert partial.decision is DecisionKind.NO_TRADE
     assert partial.stage == "partial"
     assert partial.confidence is None
     assert any(gate.status == "not_run" for gate in partial.gates)
-    blocked = analyze(
-        "AAPL",
-        config=SwingConfig.model_validate({"account": {"mode": "margin"}}),
-        env={},
-        research_result=_quiet(),
-    )
-    assert blocked.decision is DecisionKind.BLOCK
-    assert blocked.reasons[0].code is ReasonCode.BLOCK_MARGIN
-    assert blocked.stage == "skeleton"
-    assert all(gate.status == "not_run" for gate in blocked.gates)
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"account": {"mode": "margin"}})
 
 
 def test_envelope_accepts_the_widened_stages():
@@ -492,16 +434,8 @@ def test_envelope_accepts_the_widened_stages():
             side=None,
             plan=None,
             shariah={"screened": False, "status": "user_supplied", "note": "n"},
-            research={
-                "status": "skipped",
-                "provider": "none",
-                "reason": "disabled",
-                "advisory_only": True,
-                "affects_checklist_math": False,
-            },
             disclaimer=DISCLAIMER,
             config_hash="ab" * 32,
-            compact=False,
             gates=[],
             stage=stage,
         )
@@ -516,16 +450,8 @@ def test_envelope_accepts_the_widened_stages():
             side=None,
             plan=None,
             shariah={"screened": False, "status": "user_supplied", "note": "n"},
-            research={
-                "status": "skipped",
-                "provider": "none",
-                "reason": "disabled",
-                "advisory_only": True,
-                "affects_checklist_math": False,
-            },
             disclaimer=DISCLAIMER,
             config_hash="ab" * 32,
-            compact=False,
             gates=[],
             stage="finished",
         )

@@ -8,7 +8,7 @@ Cash account, long equity only. No shorts, no conventional margin, no options, C
 
 An `ENTER_LONG` stamps `confidence: "checklist_only"`. That means the predetermined rules matched. It is not a claim of edge.
 
-`swing analyze` runs the checklist brain. A match can print `ENTER_LONG` with entry, stop, target, size, and the next NYSE open. Anything else stays `NO_TRADE` or `BLOCK`, with the disclaimer and config hash on every envelope. Size uses `[account].equity_usd`, or `--equity` for that one run. With neither set, the decision is `NO_TRADE` / `EQUITY_UNSET`. Each planned `ENTER_LONG` is appended to the paper journal, and the next run counts that open risk toward the 6% heat cap, the 3% sector cap, and the four-position limit.
+`swing analyze` runs the checklist brain. A match can print `ENTER_LONG` with entry, stop, target, size, and the next NYSE open. Anything else stays `NO_TRADE`, with the disclaimer and config hash on every envelope. Size uses `[account].equity_usd`, or `--equity` for that one run. With neither set, the decision is `NO_TRADE` / `EQUITY_UNSET`. `analyze` does not append to the journal. Open lines already in `journal.jsonl` still count toward the 6% heat cap, the 3% sector cap, and the four-position limit.
 
 ## macOS setup
 
@@ -27,7 +27,7 @@ uv run swing analyze AAPL
 uv run swing analyze AAPL --json
 uv run swing analyze AAPL --sector Technology
 uv run swing analyze AAPL --equity 10000
-uv run swing analyze AAPL --simple --equity 10000
+uv run swing analyze AAPL --explain --equity 10000
 ```
 
 Copy the env example and fill in any keys you use. `.env` is gitignored. A checklist run does not require it.
@@ -35,12 +35,12 @@ Copy the env example and fill in any keys you use. `.env` is gitignored. A check
 ```bash
 cp .env.example .env
 uv run swing analyze AAPL
-uv run swing analyze AAPL --simple
+uv run swing analyze AAPL --explain
 ```
 
 On startup the CLI loads `.env` from the current directory, then `.env` in the swing data directory (`~/Library/Application Support/swing` on macOS) for any variable that is still unset. A variable already exported in the shell is left as-is. Keys are not written into config, logs, or `config_hash`.
 
-`--simple` prints one short decision (`NO TRADE` or `BLOCK`, with a plain reason) or a buy / stop / target card you place manually in IBKR. The default text stays verbose. `--json` is unchanged when `--simple` is also passed. `--simple` works with `--equity`.
+The default text is an action card: decision, reason codes, the plan when one exists, both clocks, `config_hash`, and the disclaimer. `--explain` adds every gate and the longer buy and sell numbers. `--json` prints the envelope (schema `2.0.0`).
 
 `uv sync` creates `.venv` and installs the locked dependencies from `uv.lock`. You do not need a system Python beyond what uv downloads (3.12).
 
@@ -60,15 +60,15 @@ Linux is a fallback for CI and agents only. On Linux the data root is `$XDG_DATA
 
 ## What analyze prints
 
-`swing analyze AAPL` prints one envelope. Money is USD. `--equity USD` sets the account equity in USD for that invocation and wins over `[account].equity_usd`. The decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The text view shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, and size, each price in USD), each gate name and status, and the disclaimer. On `ENTER_LONG` it also says when to buy and when to sell. `--compact` is off unless you pass it; the compact view is shorter (`Buy:` / `Sell:`) and still includes the plan, the clocks, and the disclaimer. `--simple` is a separate, even shorter card (decision and reason, or buy / stop / target) and does not change `--json`. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `1.1.0`) and nothing else on stdout. `instructions` is an additive object on that same schema (`buy`, `sell`, and `currency` = `USD`). It is null unless the decision is `ENTER_LONG`. The schema version is unchanged. `stage` is `skeleton`, `partial`, or `checklist`. The text says the brain has not run only when every gate is still `not_run`.
+`swing analyze AAPL` prints one envelope. Money is USD. `--equity USD` sets the account equity in USD for that invocation and wins over `[account].equity_usd`. The decision is `ENTER_LONG` or `NO_TRADE`. Reasons name the gate that stopped the checklist (`NO_MARKET_DATA`, `EARNINGS_BLACKOUT`, `EQUITY_UNSET`, `HEAT_LIMIT`, `MAX_POSITIONS`, and the other codes in `src/swing/codes.py`). The default card shows that decision, the reason and warning codes, the plan when one exists (setup, entry, stop, target, and size, each price in USD), and the disclaimer. `--explain` adds each gate name and status and the longer buy and sell numbers. The next open is printed in `America/New_York` and again in `timezone.user` (`Africa/Cairo` unless you change it). `--json` prints the envelope (schema `2.0.0`) and nothing else on stdout. `instructions` carries `buy`, `sell`, and `currency` = `USD`. It is null unless the decision is `ENTER_LONG`.
 
-Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, a bad ticker, a missing config path, or a journal line that is not valid JSON.
+Exit `0` means an envelope was produced, including `NO_TRADE`. Exit `2` means bad usage, a bad ticker, a missing config path, a config that is not cash, or a journal line that is not valid JSON.
 
 ## How to use the plan (manual IBKR)
 
 Money in this checklist is USD. Equity, the planned entry, the stop, the target, and the account figure used for size are USD. There is no other currency and no FX conversion. A dividend `currency` value is the vendor's label for that cash amount. v0 does not convert it, and it is not a currency setting.
 
-The CLI plans a cash long. It does not send the order. When the decision is `ENTER_LONG`, you type the order in Interactive Brokers yourself, in a cash account, long shares only. `IbkrBrokerStub` still raises. Live orders are out of scope.
+The CLI plans a cash long. It does not send the order. When the decision is `ENTER_LONG`, you type the order in Interactive Brokers yourself, in a cash account, long shares only. There is no broker library and no order path.
 
 Not financial advice. The lines are a checklist helper. `confidence` stays `checklist_only`. That stamp means the predetermined rules matched. It is not a claim of edge.
 
@@ -76,11 +76,11 @@ Not financial advice. The lines are a checklist helper. `confidence` stays `chec
 
 **When to sell.** v0 exits at the stop or the 2R target, both in USD. The stop is entry minus ATR(14) times 1.5. The target is 2R using that same risk. BO_RVOL and PB_EMA use that stop and that 2R target. RSI2_MR uses the same stop and 2R target. RSI2_MR's SMA(200) is the entry trend filter, not an exit. An SMA(5) exit is not locked in v0. Time-stops are not in v0. You type the exit in Interactive Brokers yourself. This CLI does not send it.
 
-`--compact` prints a shorter Buy and Sell form of those same steps: setup, share count, cash long, next NYSE open, entry in USD, stop, 2R target, and the note that time-stops are not in v0.
+The default card prints the shorter Buy and Sell form: setup, share count, cash long, next NYSE open, entry in USD, stop, and 2R target. `--explain` prints the longer form.
 
 ## Paper journal
 
-On macOS the file is `~/Library/Application Support/swing/journal.jsonl`. `SWING_DATA_DIR` overrides that root. The CLI creates the file on the first planned entry. `NO_TRADE` and `BLOCK` do not write a line and do not rewrite earlier ones.
+On macOS the file is `~/Library/Application Support/swing/journal.jsonl`. `SWING_DATA_DIR` overrides that root. `analyze` does not write the file. `NO_TRADE` does not write a line and does not rewrite earlier ones.
 
 A line is one JSON object. `size_shares` is copied from the plan. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`, using the equity that sized that plan (`--equity` when you pass it, otherwise `[account].equity_usd`). If equity is unset, nothing is invented and nothing is journaled.
 
@@ -111,17 +111,13 @@ None are required to print an envelope. The same names can live in `.env` (copy 
 
 | Variable | Required | Role |
 |---|---|---|
-| `CONTEXT_DEV_API_KEY` | no | Live news search at analyze time. Bearer token for `POST /web/search`. Not an OHLC source. |
-| `CONTEXT_DEV_BASE_URL` | no | Default `https://api.context.dev/v1`. `https` only, except `http` on localhost |
-| `FINNHUB_API_KEY` | no | Earnings and dividend calendars only. Never bars. Missing key is a typed data error, not a crash |
+| `FINNHUB_API_KEY` | no | Earnings calendar only. Never bars or dividends. Missing key is a typed data error, not a crash |
 | `MASSIVE_API_KEY` | only if `bars_provider` is `massive` | Bars from Massive Basic. Sent as `Authorization: Bearer`, not in the URL |
 | `SWING_BARS_PROVIDER` | no | `yfinance` (default) or `massive` |
 | `SWING_CONFIG` | no | TOML file path |
 | `SWING_DATA_DIR` | no | Overrides the data root. If `config.toml` is inside it, that file is used unless `--config` or `SWING_CONFIG` is set |
 
-If `CONTEXT_DEV_API_KEY` is missing, analyze adds `WARN_RESEARCH_UNAVAILABLE` and continues. Context headlines are advisory. They do not change entry, stop, target, size, or the decision the checklist produces. Set `research.enabled = false` in TOML to skip the warning on purpose.
-
-The key stays in the environment. It is not written into config, logs, or `config_hash`.
+Keys stay in the environment. They are not written into config, logs, or `config_hash`.
 
 ## Locked defaults
 
@@ -131,7 +127,6 @@ Prefs 1–12 are the built-in config. Details and the hash rule are in [docs/arc
 - Setups `BO_RVOL`, `PB_EMA`, `RSI2_MR`, mutex BO then PB then RSI2
 - RSI(2) below 10 for the mean-reversion setup
 - Heat total at most 6%, sector at most 3%, at most 4 open positions
-- SPY R² at or above 0.70 over 60 sessions warns only
 - Earnings blackout is strict (T−2 through T+1). Ordinary ex-div warns. A distribution at or above 1% of price still blocks
 - Bars: yfinance prototype or Massive. Events: Finnhub
 - Paper JSONL journal of planned entries. You type cash longs in Interactive Brokers. The CLI does not send orders

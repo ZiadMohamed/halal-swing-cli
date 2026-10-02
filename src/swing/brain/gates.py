@@ -9,7 +9,6 @@ PIPELINE_GATES: tuple[str, ...] = (
     "earnings",
     "regime",
     "heat",
-    "adr",
     "setup_mutex",
     "rr_stop",
     "next_open",

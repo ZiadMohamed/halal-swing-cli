@@ -10,7 +10,7 @@ from swing.data.factory import load_market_data
 from swing.data.models import BarSeries
 from swing.data.yahoo_events import YahooEvents
 from tests.fake_yahoo import NY, FakeYahoo
-from tests.synthetic import breakout_bars, equity_config, quiet_research
+from tests.synthetic import breakout_bars, equity_config
 
 # Thursday 2026-10-01 01:00 New York: the last completed session is Wednesday 2026-09-30.
 NOW = datetime(2026, 10, 1, 1, 0, tzinfo=NY)
@@ -54,7 +54,7 @@ def _decide(series: BarSeries, tmp_path):
         events=_Events(),
         yahoo=YahooEvents(FakeYahoo(), today=NOW.date()),
     )
-    return analyze("AAPL", config=equity_config(), env={}, market=market, research_result=quiet_research())
+    return analyze("AAPL", config=equity_config(), env={}, market=market)
 
 
 def test_a_current_bar_passes_the_freshness_gate(tmp_path):

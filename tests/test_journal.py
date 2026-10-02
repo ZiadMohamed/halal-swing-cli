@@ -7,7 +7,7 @@ import pytest
 
 from swing.brain.positions import OpenPosition
 from swing.journal.paper import PaperJournal
-from tests.synthetic import block_envelope, enter_envelope, no_trade_envelope
+from tests.synthetic import enter_envelope, no_trade_envelope
 
 EQUITY = 100_000.0
 
@@ -56,16 +56,15 @@ def test_second_enter_appends_and_does_not_rewrite_the_first_line(tmp_path: Path
     assert loaded[1] == OpenPosition(ticker="NVDA", risk_fraction=loaded[1].risk_fraction, sector="chips")
 
 
-def test_no_trade_and_block_do_not_create_or_rewrite_the_file(tmp_path: Path):
+def test_no_trade_does_not_create_or_rewrite_the_file(tmp_path: Path):
     journal = PaperJournal(tmp_path / "journal.jsonl")
     journal.append(no_trade_envelope(), equity_usd=None)
-    journal.append(block_envelope(), equity_usd=EQUITY)
+    journal.append(no_trade_envelope(), equity_usd=EQUITY)
     assert not journal.path.exists()
 
     journal.append(enter_envelope(), equity_usd=EQUITY)
     before = journal.path.read_bytes()
     journal.append(no_trade_envelope(), equity_usd=None)
-    journal.append(block_envelope(), equity_usd=None)
     assert journal.path.read_bytes() == before
 
 

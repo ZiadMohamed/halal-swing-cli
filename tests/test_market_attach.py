@@ -3,7 +3,7 @@
 from datetime import date
 
 from swing.analyze import analyze
-from swing.brain.stub import ChecklistResult, StubBrain
+from swing.brain.result import ChecklistResult
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
 from swing.data.factory import load_market_data
@@ -15,7 +15,6 @@ from swing.data.models import (
     MarketData,
 )
 from swing.data.yahoo_events import YahooEvents
-from swing.research.models import ResearchResult
 from tests.fake_yahoo import FakeYahoo
 
 
@@ -76,12 +75,8 @@ def _market() -> MarketData:
     )
 
 
-def _research() -> ResearchResult:
-    return ResearchResult(status="skipped", provider="none", reason="disabled", query=None, hits=())
-
-
 def test_attached_data_does_not_invent_an_entry():
-    env = analyze("AAPL", env={}, market=_market(), research_result=_research())
+    env = analyze("AAPL", env={}, market=_market())
     assert env.decision is DecisionKind.NO_TRADE
     assert env.confidence is None
     assert env.side is None
@@ -104,33 +99,34 @@ def test_attached_data_does_not_invent_an_entry():
     assert env.data.events_known is True
 
 
-def test_brain_can_accept_market_data_and_does_not_receive_research():
+def test_brain_receives_market_positions_and_sector_and_not_research():
     seen: dict[str, object] = {}
 
     class _Brain:
-        def evaluate(self, ticker: str, config: SwingConfig, market: MarketData | None = None) -> ChecklistResult:
+        def evaluate(self, ticker: str, config: SwingConfig, *, market=None, positions=(), sector=None) -> ChecklistResult:
             seen["ticker"] = ticker
             seen["market"] = market
-            return StubBrain().evaluate(ticker, config)
+            seen["positions"] = positions
+            seen["sector"] = sector
+            seen["kwargs"] = set(locals())
+            return ChecklistResult(
+                decision=DecisionKind.NO_TRADE,
+                reasons=(),
+                warnings=(),
+                confidence=None,
+                side=None,
+                plan=None,
+                gates=(),
+            )
 
-    brain = _Brain()
-    analyze("AAPL", env={}, market=_market(), brain=brain, research_result=_research())
+    analyze("AAPL", env={}, market=_market(), brain=_Brain(), positions=(), sector="tech")
     market = seen["market"]
     assert seen["ticker"] == "AAPL"
     assert isinstance(market, MarketData)
     assert market.bars is not None
     assert market.bars.corp_action_suspect is True
-    assert not hasattr(market, "hits")
-
-
-def test_legacy_brain_without_a_market_argument_still_runs():
-    class _Brain:
-        def evaluate(self, ticker: str, config: SwingConfig) -> ChecklistResult:
-            return StubBrain().evaluate(ticker, config)
-
-    env = analyze("AAPL", env={}, market=_market(), brain=_Brain(), research_result=_research())
-    assert env.decision is DecisionKind.NO_TRADE
-    assert env.data.bar_count == 2
+    assert seen["sector"] == "tech"
+    assert "research" not in seen
 
 
 def test_missing_vendor_keys_attach_typed_errors_and_stay_no_trade(tmp_path):
@@ -143,7 +139,7 @@ def test_missing_vendor_keys_attach_typed_errors_and_stay_no_trade(tmp_path):
         now=__import__("datetime").datetime(2026, 10, 1, 18, 0, tzinfo=__import__("zoneinfo").ZoneInfo("America/New_York")),
         yahoo=YahooEvents(FakeYahoo(calendar=RuntimeError("offline"), earnings=RuntimeError("offline"))),
     )
-    env = analyze("AAPL", config=cfg, env={}, market=market, research_result=_research())
+    env = analyze("AAPL", config=cfg, env={}, market=market)
     assert env.decision is DecisionKind.NO_TRADE
     assert env.plan is None
     assert env.data.status == "error"

@@ -8,15 +8,15 @@ The predetermined checklist (research round 10, prefs 1–12 locked 2026-10-01) 
 
 `swing analyze TICKER` prints one decision envelope:
 
-- decision: `ENTER_LONG`, `NO_TRADE`, or `BLOCK`
+- decision: `ENTER_LONG` or `NO_TRADE`
 - when the brain exists: entry, stop, target, size, `next_open`
 - reason and warning codes
 - disclaimer
 - `config_hash`
 
-Product guards still return `BLOCK` before the brain. With bars loaded, the checklist brain returns `ENTER_LONG`, `NO_TRADE`, or stops on a gate. `PIPELINE_NOT_IMPLEMENTED` remains only if something still calls `StubBrain`. The command returns a real envelope either way.
+With bars loaded, the checklist brain returns `ENTER_LONG` or `NO_TRADE`. `account.mode` is `cash` only, so a margin config is rejected when the file loads.
 
-There is no `ENTER_SHORT`. Short, margin, and derivative intents stop at `BLOCK_SHORT`, `BLOCK_MARGIN`, or `BLOCK_DERIVATIVE`.
+There is no `ENTER_SHORT`. There is no broker library and no order path.
 
 ## Stack
 
@@ -29,18 +29,14 @@ src/swing/
   cli.py            argv, exit codes, logging to stderr
   config.py         locked defaults and TOML load
   hashing.py        config_hash
-  codes.py          decision and reason codes (Shariah codes reserved)
-  guards.py         cash / long / equity product gate
+  codes.py          ENTER_LONG and NO_TRADE, plus reason codes
   analyze.py        orchestration only
-  envelope.py       schema 1.1.0 (`instructions` is additive; null unless ENTER_LONG)
+  envelope.py       schema 2.0.0 (`instructions` is null unless ENTER_LONG)
   disclaimer.py
   paths.py          macOS Application Support, Linux fallback
-  research/         LiveResearch adapter (Context or skip)
-  data/ports.py     BarProvider, EventProvider, CalendarProvider
   brain/            gate order + ChecklistBrain
-  output/render.py  text and JSON
+  output/render.py  action card, --explain, and JSON
   journal/paper.py  append-only paper JSONL
-  broker/ibkr.py    IBKR stub, no network
 ```
 
 ## Runtime flow
@@ -49,31 +45,25 @@ src/swing/
 argv
   → load SwingConfig (defaults, optional TOML, SWING_BARS_PROVIDER)
   → load open risk from journal.jsonl (missing file = empty book)
-  → product guard (short / margin / derivative)
   → ChecklistBrain.evaluate(ticker, config, market, positions, sector)
-  → LiveResearch.enrich(ticker)                    # fail-soft
-  → Envelope (checklist fields + data summary + advisory research)
-  → append one JSONL line when the decision is ENTER_LONG
+  → Envelope (checklist fields + data summary)
   → stdout
 ```
 
-Exit `0` means an envelope was produced, including `BLOCK` and `NO_TRADE`. Exit `2` means bad usage, an unknown ticker, or a journal line that cannot be read. A missing API key is exit `0` with `WARN_RESEARCH_UNAVAILABLE`.
+`analyze` does not append to the journal. Exit `0` means an envelope was produced, including `NO_TRADE`. Exit `2` means bad usage, an unknown ticker, a config that is not cash, or a journal line that cannot be read.
 
 ## Determinism boundary
 
-Checklist math is a pure function of bars, the NYSE calendar, events from the data ports, and the hashed config. Live search is attached after that function returns.
+Checklist math is a pure function of bars, the NYSE calendar, events, and the hashed config. News and search results are not inputs.
 
 Rules:
 
 - `ChecklistBrain.evaluate` does not take a research client.
-- Research warnings are `warnings`, not `reasons`. They do not explain a `NO_TRADE` by themselves.
-- `WARN_NEWS` is reserved for a later soft note. It must not change entry, stop, target, size, or next_open.
-- A future deterministic halt or earnings blackout may still `NO_TRADE`. That input comes from data ports, not from a headline.
-- `config_hash` covers policy only. It does not cover headlines, clock time, or home-directory paths.
+- `config_hash` covers policy only. It does not cover clock time or home-directory paths.
 
 `confidence` is `checklist_only` on `ENTER_LONG` and absent otherwise. `ENTER_LONG` also requires `side="long"` and a plan.
 
-On `ENTER_LONG`, `instructions` carries `buy`, `sell`, and `currency` = `USD`. The schema version stays `1.1.0`. The text view prints those steps. `--compact` prints a shorter form. Prices are USD. There is no FX conversion. The CLI does not send the order: you type the cash long in Interactive Brokers. `IbkrBrokerStub` still raises.
+On `ENTER_LONG`, `instructions` carries `buy`, `sell`, and `currency` = `USD`. The envelope schema is `2.0.0`. The default text is the action card. `--explain` prints the gates. Prices are USD. There is no FX conversion. The CLI does not send the order: you type the cash long in Interactive Brokers.
 
 ## Config
 
@@ -100,12 +90,10 @@ Locked policy (prefs 1–12):
 | `setups.rsi2_mr.rsi_max` | `10` (enter when RSI(2) is below this) |
 | heat | total `0.06`, sector `0.03` |
 | `max_concurrent_positions` | `4` |
-| `spy_r2` | `0.70` over 60 sessions, effect `warn` |
 | bars | `yfinance` or `massive` (never Finnhub) |
 | events | `finnhub` |
 | `earnings.strict` | `true`, blackout T−2 through T+1 |
 | `exdiv.strict` | `false` (ordinary ex-div warns). `block_yield_gte` `0.01` still blocks a large distribution. `strict = true` blocks the ex-div window |
-| `output.compact` | `false` |
 | journal | `paper_jsonl` |
 | `shariah.screen_in_v0` | `false` |
 | account | `cash`, `longs_only` |
@@ -117,48 +105,13 @@ Frozen checklist parameters from the algorithm pack (not a new claim of edge): A
 
 ## Decision codes
 
-Primary decision is `ENTER_LONG`, `NO_TRADE`, or `BLOCK`.
+Primary decision is `ENTER_LONG` or `NO_TRADE`. There is no `BLOCK` decision and no `ENTER_SHORT`. Margin is rejected when config loads (`account.mode` is `cash` only).
 
-Product blocks used when an intent asks for them: `BLOCK_SHORT`, `BLOCK_MARGIN`, `BLOCK_DERIVATIVE`.
+The envelope `shariah` object is always `screened: false`, `status: user_supplied`. The CLI does not screen and does not certify.
 
-Shariah codes exist on the enum so the schema has a place for them. The v0 analyze path does not emit them and does not call a screen:
+## News
 
-- `BLOCK_SHARIAH_SCREEN`
-- `BLOCK_SHARIAH_SECTOR`
-- `BLOCK_SHARIAH_DATA`
-- `BLOCK_SHARIAH_QUESTIONABLE`
-- `BLOCK_SHARIAH_OVERRIDE_DENIED`
-- `WARN_PURIFICATION`
-- `WARN_SHARIAH_STALE`
-- `WARN_DIY_SCREEN`
-- `WARN_SHARIAH_WEAPONS_POLICY`
-- `WARN_SHARIAH_DISAGREEMENT`
-
-Other reserved codes Chat 3 will fill: `WARN_SPY_R2`, `WARN_EXDIV`, `EARNINGS_BLACKOUT`, `SETUP_SUPPRESSED`, `WARN_NEWS`.
-
-The envelope `shariah` object is always `screened: false`, `status: user_supplied`.
-
-## Live research (Context.dev)
-
-Provider interface: `LiveResearch.enrich(ticker) -> ResearchResult`.
-
-| Env | Role |
-|---|---|
-| `CONTEXT_DEV_API_KEY` | Bearer token for the CLI process. Optional. |
-| `CONTEXT_DEV_BASE_URL` | Default `https://api.context.dev/v1`. Must be `https`, or `http` on localhost only. Anything else skips the call with `WARN_RESEARCH_ERROR` and does not send the key. |
-
-Factory behavior:
-
-- `research.enabled = false` → skip, reason `disabled`, no warning (opt-out).
-- key missing → skip, reason `missing_api_key`, warning `WARN_RESEARCH_UNAVAILABLE`.
-- key set → `POST /web/search` with query `{TICKER} stock news`, `numResults` 10, `freshness` `last_week`, `country` `us`. Timeout 8s. Titles, URLs, and descriptions only (no markdown scrape).
-- HTTP, timeout, or bad JSON → `status: error`, warning `WARN_RESEARCH_ERROR`, process continues.
-
-The key is sent only as an `Authorization` header. It is stripped from error text. It is not a config field and not part of `config_hash`.
-
-Context is for runtime stock checks (news / soft context). It is separate from bar vendors and from Finnhub. Missing Context never blocks a checklist that the brain would otherwise complete.
-
-`affects_checklist_math` on the attachment is always `false`.
+Context.dev is not part of this CLI. Headlines do not change entry, stop, target, size, or the decision.
 
 ## macOS run target
 
@@ -178,11 +131,11 @@ Data and config root on macOS:
 
 **Chat 2 — Data.** Done. `load_market_data` returns `MarketData`: split-adjusted bars (yfinance or Massive), a `corp_action_suspect` flag, Finnhub earnings and dividend events, and `next_open` from the NYSE calendar. Parquet lives under `bars_cache_dir()`. The analyze envelope copies a summary onto `data`. Finnhub does not serve OHLC.
 
-**Chat 3 — Brain.** Done. `ChecklistBrain` walks `PIPELINE_GATES` in order. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. High SPY R² is `WARN_SPY_R2` only. Earnings strict blackout is `NO_TRADE`. `confidence` is `checklist_only` on enter. Research is not an argument.
+**Chat 3 — Brain.** `ChecklistBrain` walks `PIPELINE_GATES` in order. Mutex is BO_RVOL then PB_EMA then RSI2_MR, one `ENTER_LONG`, losers `SETUP_SUPPRESSED`. Earnings strict blackout is `NO_TRADE`. `confidence` is `checklist_only` on enter.
 
-**Chat 4 — Output.** Done. `render_text` shows the decision, reason and warning codes, the plan when present, gate name and status, and the disclaimer on the full view and on `--compact`. `next_open` is printed in `America/New_York` and in `timezone.user` (default `Africa/Cairo`), the same instant. `--compact` stays default off. `--json` is one document and still carries `config_hash`, `shariah.screened=false`, and `research.affects_checklist_math=false`. A headline does not change plan numbers. The renderer does not read or write the journal.
+**Chat 4 — Output.** The default text is the action card. `--explain` adds gates. `--json` is one document and carries `config_hash` and `shariah.screened=false`. The renderer does not read or write the journal.
 
-**Chat 5 — Hardening.** Done. `PaperJournal` appends one JSON object per planned `ENTER_LONG` at `journal_path()` and never rewrites earlier lines. The CLI loads that book into `analyze` before the checklist, so heat `0.06`, sector heat `0.03` (only with `--sector` or a stored sector), and `max_concurrent_positions` `4` see prior plans. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`. No `SwingConfig` field was added, so `config_hash` is unchanged. `IbkrBrokerStub` still raises. See `HANDOVER.md` for what v0 does not do yet.
+**Chat 5 — Hardening.** `PaperJournal` can append one JSON object per planned `ENTER_LONG` and never rewrites earlier lines. `analyze` no longer appends. The CLI still loads that book into `analyze` before the checklist, so heat `0.06`, sector heat `0.03` (only with `--sector` or a stored sector), and `max_concurrent_positions` `4` see prior plans. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`.
 
 ## Out of v0
 

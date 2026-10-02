@@ -5,12 +5,11 @@ refuse a `corp_action_suspect` series before they get here.
 
 SMA is a simple mean of the last `period` values.
 EMA seeds with that SMA, then uses k = 2 / (period + 1).
-RSI and ATR use Wilder smoothing. R² is the square of the Pearson correlation.
+RSI and ATR use Wilder smoothing.
 """
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 
 
@@ -64,21 +63,6 @@ def atr(
     for true_range in ranges[period:]:
         acc = (acc * (period - 1) + true_range) / period
     return acc
-
-
-def r_squared(left: Sequence[float], right: Sequence[float]) -> float | None:
-    if len(left) != len(right) or len(left) < 2:
-        return None
-    count = len(left)
-    mean_left = sum(left) / count
-    mean_right = sum(right) / count
-    var_left = sum((value - mean_left) ** 2 for value in left)
-    var_right = sum((value - mean_right) ** 2 for value in right)
-    if var_left == 0 or var_right == 0:
-        return None
-    covariance = sum((a - mean_left) * (b - mean_right) for a, b in zip(left, right))
-    correlation = covariance / math.sqrt(var_left * var_right)
-    return correlation * correlation
 
 
 def _true_ranges(

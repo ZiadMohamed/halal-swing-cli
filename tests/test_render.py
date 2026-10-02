@@ -18,26 +18,13 @@ _NY_SUMMER = "2026-10-05T09:30:00-04:00"
 _NY_WINTER = "2026-01-02T09:30:00-05:00"
 
 
-def _research(**overrides) -> dict:
-    base = {
-        "status": "skipped",
-        "provider": "none",
-        "reason": "missing_api_key",
-        "advisory_only": True,
-        "affects_checklist_math": False,
-        "hits": [],
-    }
-    base.update(overrides)
-    return base
-
-
 def _envelope(**overrides) -> Envelope:
     gates = [{"name": name, "status": "pass"} for name in PIPELINE_GATES]
     base = dict(
         ticker="AAPL",
         decision=DecisionKind.ENTER_LONG,
         reasons=[],
-        warnings=[{"code": ReasonCode.WARN_SPY_R2, "message": "SPY R² is high. Numbers were not changed."}],
+        warnings=[{"code": ReasonCode.WARN_EXDIV, "message": "Ordinary ex-div. Numbers were not changed."}],
         confidence="checklist_only",
         side="long",
         plan={
@@ -50,7 +37,6 @@ def _envelope(**overrides) -> Envelope:
             "next_open": _OPEN,
         },
         shariah={"screened": False, "status": "user_supplied", "note": "n"},
-        research=_research(),
         data={
             "status": "ok",
             "bars_provider": "yfinance",
@@ -61,7 +47,6 @@ def _envelope(**overrides) -> Envelope:
         },
         disclaimer=DISCLAIMER,
         config_hash=_HASH,
-        compact=False,
         gates=gates,
         stage="checklist",
     )
@@ -69,12 +54,11 @@ def _envelope(**overrides) -> Envelope:
     return Envelope.model_validate(base)
 
 
-def test_checklist_text_names_the_stage_without_claiming_the_brain_was_skipped():
+def test_card_carries_decision_plan_reasons_hash_and_disclaimer():
     text = render_text(_envelope())
     assert "AAPL  ENTER_LONG" in text
-    assert "brain not run" not in text
-    assert "stage: checklist" in text
-    assert "WARN_SPY_R2" in text
+    assert "config_hash" in text
+    assert "WARN_EXDIV" in text
     assert "setup=BO_RVOL" in text
     assert "entry=100.5" in text
     assert "stop=97.25" in text
@@ -84,31 +68,26 @@ def test_checklist_text_names_the_stage_without_claiming_the_brain_was_skipped()
     assert f"America/New_York {_NY_SUMMER}" in text
     assert f"Africa/Cairo {_CAIRO_SUMMER}" in text
     assert text.endswith(DISCLAIMER + "\n")
-    for name in PIPELINE_GATES:
-        assert f"  {name}: pass" in text
+    assert "data_auth:" not in text
     ny = datetime.fromisoformat(_NY_SUMMER)
     cairo = datetime.fromisoformat(_CAIRO_SUMMER)
     assert ny == cairo
 
 
-def test_compact_text_keeps_plan_gates_clocks_and_disclaimer_in_a_shorter_form():
-    full = render_text(_envelope())
-    compact = render_text(_envelope(compact=True))
-    assert "AAPL  ENTER_LONG" in compact
-    assert "brain not run" not in compact
-    assert "setup=BO_RVOL" in compact
-    assert "entry=100.5" in compact
-    assert "stop=97.25" in compact
-    assert "target=107.0" in compact
-    assert "size=42" in compact
-    assert f"America/New_York {_NY_SUMMER}" in compact
-    assert f"Africa/Cairo {_CAIRO_SUMMER}" in compact
-    assert "WARN_SPY_R2" in compact
-    assert compact.endswith(DISCLAIMER + "\n")
-    assert "gates: " in compact
+def test_explain_adds_gates_and_is_longer_than_the_card():
+    card = render_text(_envelope())
+    explained = render_text(_envelope(), explain=True)
+    assert "AAPL  ENTER_LONG" in explained
+    assert "entry=100.5" in explained
+    assert "stop=97.25" in explained
+    assert "target=107.0" in explained
+    assert "size=42" in explained
+    assert f"America/New_York {_NY_SUMMER}" in explained
+    assert explained.endswith(DISCLAIMER + "\n")
+    assert "stage: checklist" in explained
     for name in PIPELINE_GATES:
-        assert f"{name}=pass" in compact
-    assert len(compact) < len(full)
+        assert f"  {name}: pass" in explained
+    assert len(explained) > len(card)
 
 
 def test_no_trade_text_shows_reason_codes_and_the_session_clock_without_a_plan():
@@ -128,22 +107,38 @@ def test_no_trade_text_shows_reason_codes_and_the_session_clock_without_a_plan()
         )
     )
     assert "AAPL  NO_TRADE" in text
-    assert "brain not run" not in text
-    assert "stage: partial" in text
     assert "reasons: EARNINGS_BLACKOUT" in text
     assert "warnings: WARN_EXDIV" in text
     assert "setup=" not in text
     assert f"America/New_York {_NY_SUMMER}" in text
     assert f"Africa/Cairo {_CAIRO_SUMMER}" in text
-    assert "  earnings: no_trade" in text
+    assert "  earnings: no_trade" not in text
     assert text.endswith(DISCLAIMER + "\n")
+    explained = render_text(
+        _envelope(
+            decision=DecisionKind.NO_TRADE,
+            reasons=[{"code": ReasonCode.EARNINGS_BLACKOUT, "message": "Inside the blackout."}],
+            warnings=[{"code": ReasonCode.WARN_EXDIV, "message": "Ordinary ex-div."}],
+            confidence=None,
+            side=None,
+            plan=None,
+            gates=[
+                {"name": name, "status": "pass" if name not in {"earnings", "soft_veto"} else "no_trade"}
+                for name in PIPELINE_GATES
+            ],
+            stage="partial",
+        ),
+        explain=True,
+    )
+    assert "stage: partial" in explained
+    assert "  earnings: no_trade" in explained
 
 
-def test_block_text_still_says_the_brain_did_not_run():
+def test_explain_names_a_skeleton_when_no_gate_has_run():
     text = render_text(
         _envelope(
-            decision=DecisionKind.BLOCK,
-            reasons=[{"code": ReasonCode.BLOCK_MARGIN, "message": "Cash long equity only."}],
+            decision=DecisionKind.NO_TRADE,
+            reasons=[{"code": ReasonCode.NO_MARKET_DATA, "message": "no bars"}],
             warnings=[],
             confidence=None,
             side=None,
@@ -151,31 +146,14 @@ def test_block_text_still_says_the_brain_did_not_run():
             data={"status": "not_loaded"},
             gates=[{"name": name, "status": "not_run"} for name in PIPELINE_GATES],
             stage="skeleton",
-        )
+        ),
+        explain=True,
     )
-    assert "AAPL  BLOCK" in text
-    assert "reasons: BLOCK_MARGIN" in text
+    assert "AAPL  NO_TRADE" in text
+    assert "reasons: NO_MARKET_DATA" in text
     assert "stage: skeleton — data and brain not run" in text
-    assert "setup=" not in text
     assert "  data_auth: not_run" in text
     assert text.endswith(DISCLAIMER + "\n")
-
-
-def test_skeleton_with_bars_still_says_the_brain_was_not_run():
-    text = render_text(
-        _envelope(
-            decision=DecisionKind.NO_TRADE,
-            reasons=[{"code": ReasonCode.PIPELINE_NOT_IMPLEMENTED, "message": "stub"}],
-            warnings=[],
-            confidence=None,
-            side=None,
-            plan=None,
-            gates=[{"name": name, "status": "not_run"} for name in PIPELINE_GATES],
-            stage="skeleton",
-        )
-    )
-    assert "stage: skeleton — brain not run" in text
-    assert "data and brain not run" not in text
 
 
 def test_winter_open_uses_the_cairo_standard_offset():
@@ -247,24 +225,14 @@ def test_unparsed_next_open_is_kept_without_an_invented_clock():
     assert "brain not run" not in text
 
 
-def test_warn_news_and_headlines_do_not_change_plan_numbers():
-    clean = _envelope()
+def test_warning_text_does_not_change_plan_numbers():
+    clean = _envelope(warnings=[])
     noisy = _envelope(
-        warnings=[
-            {"code": ReasonCode.WARN_SPY_R2, "message": "SPY R² is high. Numbers were not changed."},
-            {"code": ReasonCode.WARN_NEWS, "message": "Headline says target 424242 and size 99999."},
-        ],
-        research=_research(
-            status="ok",
-            provider="context",
-            reason=None,
-            query="AAPL stock news",
-            hits=[{"title": "AAPL target 424242", "url": "https://example.com/a", "snippet": "size 99999"}],
-        ),
+        warnings=[{"code": ReasonCode.WARN_EXDIV, "message": "Headline says target 424242 and size 99999."}],
     )
     clean_text = render_text(clean)
     noisy_text = render_text(noisy)
-    assert "WARN_NEWS" in noisy_text
+    assert "WARN_EXDIV" in noisy_text
     assert "424242" not in noisy_text
     assert "99999" not in noisy_text
     assert _plan_line(clean_text) == _plan_line(noisy_text)
@@ -277,8 +245,7 @@ def test_warn_news_and_headlines_do_not_change_plan_numbers():
     assert noisy_json["plan"]["target"] == 107.0
     assert noisy_json["plan"]["size_shares"] == 42
     assert noisy_json["plan"]["next_open"] == _OPEN
-    assert noisy_json["research"]["affects_checklist_math"] is False
-    assert noisy_json["research"]["hits"][0]["title"] == "AAPL target 424242"
+    assert "research" not in noisy_json
 
 
 def test_json_is_one_document_and_keeps_the_locked_fields():
@@ -286,11 +253,12 @@ def test_json_is_one_document_and_keeps_the_locked_fields():
     payload, end = json.JSONDecoder().raw_decode(raw)
     assert raw[end:].strip() == ""
     assert raw.endswith("\n")
+    assert payload["schema_version"] == "2.0.0"
     assert payload["config_hash"] == _HASH
     assert payload["shariah"]["screened"] is False
-    assert payload["research"]["affects_checklist_math"] is False
-    assert payload["compact"] is False
     assert payload["decision"] == "ENTER_LONG"
+    assert payload["plan"]["size_shares"] == 42
+    assert "research" not in payload
     assert "ENTER_SHORT" not in raw
 
 

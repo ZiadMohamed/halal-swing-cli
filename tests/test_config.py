@@ -33,20 +33,13 @@ def test_defaults_match_locked_prefs():
     assert cfg.stops.atr_period == 14
     assert cfg.stops.atr_multiple == 1.5
     assert cfg.stops.reward_r == 2.0
-    assert cfg.spy_r2.threshold == 0.70
-    assert cfg.spy_r2.lookback_days == 60
-    assert cfg.spy_r2.effect == "warn"
     assert cfg.earnings.strict is True
     assert cfg.earnings.blackout_before_days == 2
     assert cfg.earnings.blackout_after_days == 1
     assert cfg.exdiv.strict is False
     assert cfg.exdiv.block_yield_gte == 0.01
-    assert cfg.output.compact is False
     assert cfg.data.bars_provider == "yfinance"
     assert cfg.data.events_provider == "finnhub"
-    assert cfg.research.provider == "context"
-    assert cfg.research.enabled is True
-    assert cfg.research.affects_checklist_math is False
     assert cfg.journal.mode == "paper_jsonl"
     assert cfg.shariah.screen_in_v0 is False
     assert cfg.shariah.provider is None
@@ -59,9 +52,13 @@ def test_finnhub_cannot_be_the_bars_provider():
         SwingConfig.model_validate({"data": {"bars_provider": "finnhub"}})
 
 
-def test_research_cannot_affect_checklist_math():
+def test_removed_research_and_spy_tables_are_rejected():
     with pytest.raises(ValidationError):
-        SwingConfig.model_validate({"research": {"affects_checklist_math": True}})
+        SwingConfig.model_validate({"research": {"enabled": False}})
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"spy_r2": {"threshold": 0.7}})
+    with pytest.raises(ValidationError):
+        SwingConfig.model_validate({"output": {"compact": True}})
 
 
 def test_unknown_config_key_is_rejected():
@@ -91,7 +88,7 @@ def test_toml_override_keeps_other_defaults(tmp_path: Path):
     cfg = load_config(path=path, env={})
     assert cfg.max_concurrent_positions == 3
     assert cfg.risk.per_trade == 0.01
-    assert cfg.output.compact is False
+    assert cfg.account.mode == "cash"
 
 
 def test_env_bars_provider_overrides_file(tmp_path: Path):
@@ -129,7 +126,7 @@ def test_explicit_config_beats_data_dir(tmp_path: Path):
 
 def test_locked_policy_cannot_be_relaxed():
     with pytest.raises(ValidationError):
-        SwingConfig.model_validate({"spy_r2": {"effect": "block"}})
+        SwingConfig.model_validate({"account": {"mode": "margin"}})
     with pytest.raises(ValidationError):
         SwingConfig.model_validate({"shariah": {"screen_in_v0": True}})
     with pytest.raises(ValidationError):

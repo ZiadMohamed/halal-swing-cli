@@ -49,11 +49,6 @@ atr_period = 14
 atr_multiple = 1.5
 reward_r = 2.0
 
-[spy_r2]
-threshold = 0.70
-lookback_days = 60
-effect = "warn"
-
 [earnings]
 strict = true
 blackout_before_days = 2
@@ -63,17 +58,9 @@ blackout_after_days = 1
 strict = false
 block_yield_gte = 0.01
 
-[output]
-compact = false
-
 [data]
 bars_provider = "yfinance"
 events_provider = "finnhub"
-
-[research]
-provider = "context"
-enabled = true
-affects_checklist_math = false
 
 [journal]
 mode = "paper_jsonl"

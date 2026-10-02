@@ -16,7 +16,7 @@ from swing.codes import ReasonCode
 from swing.config import load_config
 from swing.envfile import load_project_env
 from swing.journal.paper import PaperJournal
-from swing.output.render import render_json, render_simple, render_text
+from swing.output.render import render_json, render_text
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,13 +29,11 @@ def main(argv: list[str] | None = None) -> int:
     _configure_logging(args.verbose)
     try:
         config = load_config(path=args.config)
-        compact = bool(args.compact or config.output.compact)
         journal = PaperJournal()
         positions = journal.load_positions()
         envelope = analyze(
             args.ticker,
             config=config,
-            compact=compact,
             fetch_market=True,
             positions=positions,
             sector=_sector(args.sector),
@@ -49,12 +47,11 @@ def main(argv: list[str] | None = None) -> int:
         print(hint, file=sys.stderr)
     if args.json:
         sys.stdout.write(render_json(envelope))
-    elif args.simple:
-        sys.stdout.write(render_simple(envelope))
     else:
         sys.stdout.write(
             render_text(
                 envelope,
+                explain=bool(args.explain),
                 user_tz=config.timezone.user,
                 market_tz=config.timezone.market,
                 config=config,
@@ -83,14 +80,9 @@ def _parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("ticker", help="US equity ticker you have already screened (example: AAPL)")
     analyze_parser.add_argument("--json", action="store_true", help="Print the decision envelope as JSON")
     analyze_parser.add_argument(
-        "--compact",
+        "--explain",
         action="store_true",
-        help="Shorter text. Default off. Still prints the disclaimer.",
-    )
-    analyze_parser.add_argument(
-        "--simple",
-        action="store_true",
-        help="Minimal human text. Default stays verbose. Ignored when --json is set.",
+        help="Print every gate and the longer buy and sell numbers. Ignored when --json is set.",
     )
     analyze_parser.add_argument("--config", type=Path, help="TOML config file. Overrides discovery.")
     analyze_parser.add_argument(

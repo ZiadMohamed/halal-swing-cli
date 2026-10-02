@@ -10,8 +10,6 @@ _ROOT = Path(__file__).resolve().parents[1]
 _EXAMPLE_KEYS = (
     "FINNHUB_API_KEY",
     "MASSIVE_API_KEY",
-    "CONTEXT_DEV_API_KEY",
-    "CONTEXT_DEV_BASE_URL",
     "SWING_BARS_PROVIDER",
     "SWING_CONFIG",
     "SWING_DATA_DIR",
@@ -26,7 +24,7 @@ def test_cwd_dotenv_fills_missing_keys_and_keeps_comments(tmp_path):
             [
                 "# earnings calendar only",
                 'export FINNHUB_API_KEY="fh-test"',
-                "CONTEXT_DEV_BASE_URL=https://api.context.dev/v1",
+                "MASSIVE_API_KEY=massive-test",
                 "",
             ]
         ),
@@ -35,7 +33,7 @@ def test_cwd_dotenv_fills_missing_keys_and_keeps_comments(tmp_path):
     env: dict[str, str] = {}
     load_project_env(cwd=cwd, environ=env, data_dir=tmp_path / "missing-data")
     assert env["FINNHUB_API_KEY"] == "fh-test"
-    assert env["CONTEXT_DEV_BASE_URL"] == "https://api.context.dev/v1"
+    assert env["MASSIVE_API_KEY"] == "massive-test"
 
 
 def test_process_environment_wins_over_dotenv_files(tmp_path):
@@ -58,14 +56,14 @@ def test_data_dir_fills_keys_the_cwd_file_omits(tmp_path):
     data.mkdir()
     (cwd / ".env").write_text("FINNHUB_API_KEY=from-cwd\n", encoding="utf-8")
     (data / ".env").write_text(
-        "FINNHUB_API_KEY=from-data\nMASSIVE_API_KEY=from-data\nCONTEXT_DEV_API_KEY=from-data\n",
+        "FINNHUB_API_KEY=from-data\nMASSIVE_API_KEY=from-data\nSWING_BARS_PROVIDER=massive\n",
         encoding="utf-8",
     )
     env: dict[str, str] = {}
     load_project_env(cwd=cwd, environ=env, data_dir=data)
     assert env["FINNHUB_API_KEY"] == "from-cwd"
     assert env["MASSIVE_API_KEY"] == "from-data"
-    assert env["CONTEXT_DEV_API_KEY"] == "from-data"
+    assert env["SWING_BARS_PROVIDER"] == "massive"
 
 
 def test_swing_data_dir_in_the_cwd_file_selects_the_data_dotenv(tmp_path):
@@ -132,4 +130,5 @@ def test_readme_tells_you_to_copy_the_example_and_analyze():
     readme = (_ROOT / "README.md").read_text(encoding="utf-8")
     assert "cp .env.example .env" in readme
     assert "swing analyze" in readme
-    assert "--simple" in readme
+    assert "--explain" in readme
+    assert "CONTEXT_DEV" not in readme

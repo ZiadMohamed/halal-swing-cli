@@ -10,7 +10,7 @@ from swing.analyze import analyze
 from swing.cli import main
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
-from tests.synthetic import SUMMER_OPEN, equity_config, install_market, quiet_research
+from tests.synthetic import SUMMER_OPEN, equity_config, install_market
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +30,7 @@ def _offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def _file(tmp_path: Path, equity: float | None) -> Path:
     account = "" if equity is None else f"equity_usd = {equity}\n"
     path = tmp_path / "swing.toml"
-    path.write_text(f"[account]\n{account}[research]\nenabled = false\n", encoding="utf-8")
+    path.write_text(f"[account]\n{account}", encoding="utf-8")
     return path
 
 
@@ -68,7 +68,7 @@ def test_cli_equity_sizes_without_changing_the_file_hash(
     install_market(monkeypatch, next_open=SUMMER_OPEN)
     path = _file(tmp_path, 100_000.0)
     file_config = SwingConfig.model_validate(
-        {"account": {"equity_usd": 100_000.0}, "research": {"enabled": False}}
+        {"account": {"equity_usd": 100_000.0}}
     )
     code, text, err = _run(["analyze", "AAPL", "--config", str(path), "--equity", "10000", "--json"])
     assert code == 0
@@ -93,7 +93,7 @@ def test_cli_equity_wins_over_toml_and_leaves_indicator_prices_alone(
     install_market(monkeypatch, next_open=SUMMER_OPEN)
     path = _file(tmp_path, 50_000.0)
     file_hash = SwingConfig.model_validate(
-        {"account": {"equity_usd": 50_000.0}, "research": {"enabled": False}}
+        {"account": {"equity_usd": 50_000.0}}
     ).config_hash()
     base_code, base_text, _err = _run(["analyze", "AAPL", "--config", str(path), "--json"])
     over_code, over_text, _err = _run(
@@ -151,7 +151,7 @@ def test_override_does_not_rescale_open_heat_and_still_blocks_at_one_percent(
 def test_neither_cli_nor_config_equity_is_still_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     install_market(monkeypatch, next_open=SUMMER_OPEN)
     path = _file(tmp_path, None)
-    unset = SwingConfig.model_validate({"research": {"enabled": False}})
+    unset = SwingConfig()
     code, text, _err = _run(["analyze", "AAPL", "--config", str(path), "--json"])
     assert code == 0
     payload = json.loads(text)
@@ -166,7 +166,7 @@ def test_neither_cli_nor_config_equity_is_still_unset(tmp_path: Path, monkeypatc
 def test_cli_equity_alone_is_enough_when_toml_leaves_it_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     install_market(monkeypatch, next_open=SUMMER_OPEN)
     path = _file(tmp_path, None)
-    unset = SwingConfig.model_validate({"research": {"enabled": False}})
+    unset = SwingConfig()
     code, text, _err = _run(["analyze", "AAPL", "--config", str(path), "--equity", "10000", "--json"])
     assert code == 0
     payload = json.loads(text)
@@ -187,7 +187,6 @@ def test_analyze_override_does_not_mutate_config_or_invent_equity():
         env={},
         equity_usd=10_000.0,
         market=_offline_market(),
-        research_result=quiet_research(),
     )
     assert cfg.account.equity_usd == 100_000.0
     assert cfg.config_hash() == original_hash
@@ -202,7 +201,6 @@ def test_analyze_override_does_not_mutate_config_or_invent_equity():
         config=cfg,
         env={},
         market=_offline_market(),
-        research_result=quiet_research(),
     ).plan.entry  # type: ignore[union-attr]
 
     missing = analyze(
@@ -210,7 +208,6 @@ def test_analyze_override_does_not_mutate_config_or_invent_equity():
         config=equity_config(None),
         env={},
         market=_offline_market(),
-        research_result=quiet_research(),
     )
     assert missing.decision is DecisionKind.NO_TRADE
     assert missing.reasons[0].code is ReasonCode.EQUITY_UNSET
@@ -238,7 +235,6 @@ def test_bad_equity_is_usage_and_does_not_invent_a_size(tmp_path: Path, monkeypa
             env={},
             equity_usd=float("nan"),
             market=_offline_market(),
-            research_result=quiet_research(),
         )
 
 

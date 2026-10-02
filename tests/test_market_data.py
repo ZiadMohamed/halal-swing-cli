@@ -12,7 +12,7 @@ from swing.data.finnhub import FinnhubEvents
 from swing.data.models import BarSeries
 from swing.data.yahoo_events import YahooEvents
 from tests.fake_yahoo import NY, FakeYahoo, earnings_frame
-from tests.synthetic import breakout_bars, equity_config, quiet_research
+from tests.synthetic import breakout_bars, equity_config
 
 # Thursday 2026-10-01 01:00 New York: the last completed session is Wednesday 2026-09-30.
 NOW = datetime(2026, 10, 1, 1, 0, tzinfo=NY)
@@ -69,7 +69,7 @@ def _load(series: BarSeries, *, finnhub: FinnhubEvents, yahoo: FakeYahoo, tmp_pa
 
 
 def _decide(market):
-    return analyze("AAPL", config=equity_config(), env={}, market=market, research_result=quiet_research())
+    return analyze("AAPL", config=equity_config(), env={}, market=market)
 
 
 def test_finnhub_earnings_200_and_no_dividend_call_means_events_known(tmp_path):

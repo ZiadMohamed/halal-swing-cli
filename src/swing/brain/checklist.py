@@ -9,13 +9,8 @@ configured multiple (1.5). Target is that risk times `reward_r` (2).
 Share size is `floor(equity * per_trade / risk_per_share)`. A null
 `account.equity_usd` is not replaced with a guess.
 
-SPY R² at or above the configured threshold is `WARN_SPY_R2` only. The caller
-passes SPY bars from the same bar provider. A missing or suspect SPY series
-does not block.
-
 Liquidity has no locked dollar floor. Fewer than 20 sessions, or a
-non-positive 20-session average of close times volume, is illiquid. ADR is the
-20-session mean of (high-low)/close. A non-positive ADR does not trade.
+non-positive 20-session average of close times volume, is illiquid.
 
 Ex-div is judged on the entry session only. Yield is cash amount divided by
 the prior adjusted close. `exdiv.strict` blocks that session. Otherwise a
@@ -39,8 +34,9 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from swing.brain.gates import PIPELINE_GATES
-from swing.brain.indicators import atr, r_squared
+from swing.brain.indicators import atr
 from swing.brain.positions import OpenPosition
+from swing.brain.result import ChecklistResult
 from swing.brain.setups import (
     SuspectSeries,
     bo_rvol_signal,
@@ -49,16 +45,14 @@ from swing.brain.setups import (
     rsi2_signal,
     select_setup,
 )
-from swing.brain.stub import ChecklistResult
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
 from swing.data.calendar import NyseCalendar
-from swing.data.models import BarSeries, DailyBar, MarketData
+from swing.data.models import DailyBar, MarketData
 from swing.envelope import GateView, Plan, Reason
 
 _NY = ZoneInfo("America/New_York")
 _LIQUIDITY_SESSIONS = 20
-_ADR_SESSIONS = 20
 
 
 def earnings_window(calendar: NyseCalendar, report_date: date, before: int, after: int) -> tuple[date, date]:
@@ -80,7 +74,6 @@ class ChecklistBrain:
         ticker: str,
         config: SwingConfig,
         market: MarketData | None = None,
-        spy_bars: BarSeries | None = None,
         positions: tuple[OpenPosition, ...] = (),
         sector: str | None = None,
     ) -> ChecklistResult:
@@ -154,27 +147,12 @@ class ChecklistBrain:
                 return halt("earnings", "no_trade", earnings[0], earnings[1])
         gates["earnings"] = "pass"
 
-        regime = _spy_warning(config, bars, spy_bars)
-        if regime is not None:
-            warnings.append(regime)
-            gates["regime"] = "warn"
-        else:
-            gates["regime"] = "pass"
+        gates["regime"] = "pass"
 
         heat = _heat_problem(config, book, sector)
         if heat is not None:
             return halt("heat", "no_trade", heat[0], heat[1])
         gates["heat"] = "pass"
-
-        adr = _average_daily_range(bars)
-        if adr is None or adr <= 0:
-            return halt(
-                "adr",
-                "no_trade",
-                ReasonCode.ADR_TOO_QUIET,
-                "20-session average daily range is not positive, so a 1.5 ATR stop has no range to sit on.",
-            )
-        gates["adr"] = "pass"
 
         matched: set[str] = set()
         if bo_rvol_signal(bars, config):
@@ -341,37 +319,6 @@ def _earnings_problem(
     return None
 
 
-def _spy_warning(config: SwingConfig, bars: tuple[DailyBar, ...], spy_bars: BarSeries | None) -> Reason | None:
-    if spy_bars is None or spy_bars.corp_action_suspect or config.spy_r2.effect != "warn":
-        return None
-    score = _spy_r2(bars, spy_bars.bars, config.spy_r2.lookback_days)
-    if score is None or score < config.spy_r2.threshold:
-        return None
-    return Reason(
-        code=ReasonCode.WARN_SPY_R2,
-        message=(
-            f"SPY R² over {config.spy_r2.lookback_days} sessions is {score:.2f}, "
-            f"at or above {config.spy_r2.threshold:.2f}. Warning only."
-        ),
-    )
-
-
-def _spy_r2(stock: tuple[DailyBar, ...], spy: tuple[DailyBar, ...], lookback: int) -> float | None:
-    spy_close = {bar.session: bar.close for bar in spy}
-    paired = [(bar.close, spy_close[bar.session]) for bar in stock if bar.session in spy_close]
-    if len(paired) < lookback:
-        return None
-    window = paired[-lookback:]
-    stock_returns: list[float] = []
-    spy_returns: list[float] = []
-    for (left_close, left_spy), (right_close, right_spy) in zip(window, window[1:]):
-        if left_close <= 0 or left_spy <= 0:
-            return None
-        stock_returns.append(right_close / left_close - 1)
-        spy_returns.append(right_spy / left_spy - 1)
-    return r_squared(stock_returns, spy_returns)
-
-
 def _heat_problem(
     config: SwingConfig,
     positions: tuple[OpenPosition, ...],
@@ -401,17 +348,6 @@ def _heat_problem(
                 f"Sector {sector} heat would be {used:.4f}, above {config.heat.sector_max:.4f}.",
             )
     return None
-
-
-def _average_daily_range(bars: tuple[DailyBar, ...]) -> float | None:
-    if len(bars) < _ADR_SESSIONS:
-        return None
-    values: list[float] = []
-    for bar in bars[-_ADR_SESSIONS:]:
-        if bar.close <= 0 or not math.isfinite(bar.high) or not math.isfinite(bar.low):
-            return None
-        values.append((bar.high - bar.low) / bar.close)
-    return sum(values) / len(values)
 
 
 def _size(config: SwingConfig, bars: tuple[DailyBar, ...]) -> tuple[float, float, float, int] | Reason:

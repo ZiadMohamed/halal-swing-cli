@@ -34,88 +34,54 @@ def _offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("SWING_CONFIG", raising=False)
     install_market(monkeypatch, next_open=SUMMER_OPEN)
     path = tmp_path / "swing.toml"
-    path.write_text("[research]\nenabled = false\n", encoding="utf-8")
+    path.write_text("", encoding="utf-8")
     return path
 
 
-def test_analyze_equity_text_states_when_to_buy_and_sell_in_usd(_offline: Path):
+def test_card_states_the_plan_in_usd(_offline: Path):
     code, text, err = _run(["analyze", "AAPL", "--config", str(_offline), "--equity", "10000"])
     assert code == 0
     assert err == ""
     assert "AAPL  ENTER_LONG" in text
+    assert "config_hash" in text
     assert text.rstrip("\n").endswith(DISCLAIMER)
-    assert "When to buy:" in text
-    assert "When to sell:" in text
-    buy, sell = _buy_sell(text)
-    assert "BO_RVOL" in buy
-    assert "mutex" in buy
-    assert "SMA(50)" in buy
-    assert "20-session" in buy
-    assert "1.5" in buy
-    assert "cash long" in buy
-    assert "USD" in buy
-    assert "10000.0 USD" in buy
-    assert "next NYSE open" in buy
-    assert SUMMER_OPEN in buy
-    assert "signal close" in buy
-    assert "Interactive Brokers" in buy
-    assert "does not send" in buy
-    assert "not advice" in buy
-    assert "USD" in sell
-    assert "2R" in sell
-    assert "ATR(14)" in sell
-    assert "1.5" in sell
-    assert "BO_RVOL" in sell
-    assert "PB_EMA" in sell
-    assert "RSI2_MR" in sell
-    assert "SMA(200)" in sell
-    assert "An SMA(5) exit is not locked in v0." in sell
-    assert "Time-stops are not in v0." in sell
-    assert "Interactive Brokers" in sell
-    assert "does not send" in sell
+    plan = _plan_numbers(text)
+    assert plan["setup"] == "BO_RVOL"
+    assert "USD" in text
     assert "EUR" not in text
     assert "GBP" not in text
-    plan = _plan_numbers(text)
-    assert f"{plan['size']} shares" in buy or f"Buy {plan['size']} shares" in buy
-    assert f"{plan['entry']} USD" in buy
-    assert f"{plan['stop']} USD" in sell
-    assert f"{plan['target']} USD" in sell
-    assert "entry=" in text and "USD" in text
-    assert f"stop={plan['stop']} USD" in text
-    assert f"target={plan['target']} USD" in text
+    assert f"equity={plan['equity']} USD" in text or "10000.0" in text
+    assert SUMMER_OPEN in text
+    buy = next(line for line in text.splitlines() if line.startswith("Buy:"))
+    sell = next(line for line in text.splitlines() if line.startswith("Sell:"))
+    assert plan["size"] in buy
+    assert plan["entry"] in buy
+    assert plan["stop"] in sell
+    assert plan["target"] in sell
+    assert "does not send" in text
+    assert "When to buy:" not in text
 
 
-def test_compact_analyze_text_is_shorter_and_still_says_buy_and_sell(_offline: Path):
-    _code, full, _err = _run(["analyze", "AAPL", "--config", str(_offline), "--equity", "10000"])
-    code, compact, err = _run(
-        ["analyze", "AAPL", "--config", str(_offline), "--equity", "10000", "--compact"]
-    )
+def test_explain_is_longer_and_names_the_gates(_offline: Path):
+    _code, card, _err = _run(["analyze", "AAPL", "--config", str(_offline), "--equity", "10000"])
+    code, explained, err = _run(["analyze", "AAPL", "--config", str(_offline), "--equity", "10000", "--explain"])
     assert code == 0
     assert err == ""
-    assert "Buy:" in compact
-    assert "Sell:" in compact
-    assert "When to buy:" not in compact
-    assert "When to sell:" not in compact
-    assert "BO_RVOL" in compact
-    assert "cash long" in compact
-    assert "USD" in compact
-    assert "next NYSE open" in compact
-    assert SUMMER_OPEN in compact
-    assert "2R" in compact
-    assert "Time-stops are not in v0." in compact
-    assert "Interactive Brokers" in compact
-    assert "does not send" in compact
-    assert compact.rstrip("\n").endswith(DISCLAIMER)
-    assert len(compact) < len(full)
+    assert "When to buy:" in explained
+    assert "When to sell:" in explained
+    assert "  setup_mutex: pass" in explained
+    assert explained.rstrip("\n").endswith(DISCLAIMER)
+    assert len(explained) > len(card)
+    assert _plan_numbers(explained) == _plan_numbers(card)
 
 
-def test_json_adds_buy_and_sell_without_a_schema_bump_or_a_new_hash(_offline: Path):
-    file_hash = SwingConfig.model_validate({"research": {"enabled": False}}).config_hash()
+def test_json_adds_buy_and_sell_and_keeps_the_file_hash(_offline: Path):
+    file_hash = SwingConfig().config_hash()
     code, raw, err = _run(["analyze", "AAPL", "--config", str(_offline), "--equity", "10000", "--json"])
     assert code == 0
     assert err == ""
     payload = json.loads(raw)
-    assert payload["schema_version"] == "1.1.0"
+    assert payload["schema_version"] == "2.0.0"
     assert payload["confidence"] == "checklist_only"
     assert payload["config_hash"] == file_hash
     assert payload["equity_usd"] == 10000.0
@@ -183,7 +149,7 @@ def test_readme_documents_usd_manual_ibkr_and_buy_sell():
     assert "GBP" not in readme
 
 
-def test_pb_and_rsi2_text_names_the_locked_signal_and_does_not_invent_an_exit():
+def test_pb_and_rsi2_cards_name_the_setup_and_the_prices():
     pb = render_text(
         _envelope(
             plan={
@@ -198,17 +164,12 @@ def test_pb_and_rsi2_text_names_the_locked_signal_and_does_not_invent_an_exit():
             }
         )
     )
-    pb_buy, pb_sell = _buy_sell(pb)
-    assert "PB_EMA" in pb_buy
-    assert "EMA(50)" in pb_buy
-    assert "EMA(20)" in pb_buy
-    assert "8 shares" in pb_buy
-    assert "50.0 USD" in pb_buy
-    assert "48.0 USD" in pb_sell
-    assert "54.0 USD" in pb_sell
-    assert "2R" in pb_sell
-    assert "An SMA(5) exit is not locked in v0." in pb_sell
-    assert "Time-stops are not in v0." in pb_sell
+    assert "setup=PB_EMA" in pb
+    assert "entry=50.0" in pb
+    assert "stop=48.0" in pb
+    assert "target=54.0" in pb
+    assert "size=8" in pb
+    assert "sell at SMA(5)" not in pb.lower()
 
     rsi = render_text(
         _envelope(
@@ -224,34 +185,22 @@ def test_pb_and_rsi2_text_names_the_locked_signal_and_does_not_invent_an_exit():
             }
         )
     )
-    rsi_buy, rsi_sell = _buy_sell(rsi)
-    assert "RSI2_MR" in rsi_buy
-    assert "SMA(200)" in rsi_buy
-    assert "RSI(2)" in rsi_buy
-    assert "below 10" in rsi_buy
-    assert "3 shares" in rsi_buy
-    assert "10.0 USD" in rsi_buy
-    assert "9.0 USD" in rsi_sell
-    assert "12.0 USD" in rsi_sell
-    assert "An SMA(5) exit is not locked in v0." in rsi_sell
-    assert "Time-stops are not in v0." in rsi_sell
-    assert "sell at SMA(5)" not in rsi.lower()
+    assert "setup=RSI2_MR" in rsi
+    assert "size=3" in rsi
+    assert "entry=10.0" in rsi
+    assert "stop=9.0" in rsi
+    assert "target=12.0" in rsi
 
 
 def test_signal_wording_follows_the_config_periods_without_touching_the_hash(
     _offline: Path,
 ):
     custom = SwingConfig.model_validate(
-        {
-            "research": {"enabled": False},
-            "setups": {"bo_rvol": {"sma_period": 40, "rvol_min": 1.8, "breakout_lookback": 15}},
-        }
+        {"setups": {"bo_rvol": {"sma_period": 40, "rvol_min": 1.8, "breakout_lookback": 15}}}
     )
     _offline.write_text(
         "\n".join(
             [
-                "[research]",
-                "enabled = false",
                 "[setups.bo_rvol]",
                 "sma_period = 40",
                 "rvol_min = 1.8",
@@ -261,12 +210,11 @@ def test_signal_wording_follows_the_config_periods_without_touching_the_hash(
         ),
         encoding="utf-8",
     )
-    code, text, err = _run(["analyze", "AAPL", "--config", str(_offline), "--equity", "10000"])
+    code, text, err = _run(["analyze", "AAPL", "--config", str(_offline), "--equity", "10000", "--explain"])
     assert code == 0
     assert err == ""
-    buy, _sell = _buy_sell(text)
+    buy = next(line for line in text.splitlines() if line.startswith("When to buy:"))
     assert "SMA(40)" in buy
-    assert "SMA(50)" not in buy
     assert "15-session" in buy
     assert "1.8" in buy
     _json_code, raw, _json_err = _run(
@@ -275,14 +223,8 @@ def test_signal_wording_follows_the_config_periods_without_touching_the_hash(
     assert _json_code == 0
     payload = json.loads(raw)
     assert payload["config_hash"] == custom.config_hash()
-    assert payload["schema_version"] == "1.1.0"
-    assert Envelope.model_fields["schema_version"].default == "1.1.0"
-
-
-def _buy_sell(text: str) -> tuple[str, str]:
-    buy = next(line for line in text.splitlines() if line.startswith("When to buy:"))
-    sell = next(line for line in text.splitlines() if line.startswith("When to sell:"))
-    return buy, sell
+    assert payload["schema_version"] == "2.0.0"
+    assert Envelope.model_fields["schema_version"].default == "2.0.0"
 
 
 def _plan_numbers(text: str) -> dict[str, str]:
