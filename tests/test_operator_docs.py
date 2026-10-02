@@ -1,6 +1,10 @@
 """Operator docs point at the Section 8 answers. The live example stays on v0 defaults."""
 
+import tomllib
 from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
 
 from swing.config import SwingConfig, load_config
 from swing.hashing import config_hash
@@ -33,3 +37,27 @@ def test_example_config_still_matches_builtin_defaults():
     assert loaded.account.mode == "cash"
     assert loaded.data.bars_provider == "yfinance"
     assert config_hash(loaded) == config_hash(SwingConfig())
+
+
+def test_v1_surface_example_is_recorded_and_not_loaded():
+    path = _ROOT / "config" / "v1-surface.example.toml"
+    text = path.read_text(encoding="utf-8")
+    assert "Not wired to swing analyze" in text
+    with path.open("rb") as handle:
+        data = tomllib.load(handle)
+    assert data["portfolio"] == {"slots": 5, "max_position_frac": 0.20}
+    assert data["regime"] == {"gate": True, "symbol": "SPY", "sma": 200}
+    assert data["trend"] == {"sma": 200}
+    assert data["rank"] == {"lookback": 126, "skip": 5}
+    assert data["exit"] == {"mode": "trail", "trail_atr": 3.0, "target_r": 2.0}
+    assert data["entry"] == {"cap_atr": 1.0}
+    assert data["stops"] == {"atr_period": 14, "initial_atr": 1.5}
+    assert data["earnings"] == {"strict": True, "min_room_sessions": 3, "after_days": 1}
+    assert data["liquidity"] == {"min_price": 5, "min_median_dollar_volume": 10000000}
+    assert data["benchmark"] == {"symbol": "SPUS"}
+    with pytest.raises(ValidationError):
+        load_config(path=path, env={})
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "not wired" in readme
+    assert "config/v1-surface.example.toml" in readme
+    assert "portfolio.slots" in readme

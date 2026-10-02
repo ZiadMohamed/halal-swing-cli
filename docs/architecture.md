@@ -47,7 +47,7 @@ The live checklist is still the v0 book: three triggers with the mutex, a 1.5×A
 
 Operator equity, the half-size risk for the first 20 closed fills, and the benchmark ticker are recorded in [docs/decisions/SECTION8_ANSWERS.md](decisions/SECTION8_ANSWERS.md). `account.equity_usd` in `~/.swing/config.toml` is the satellite sleeve only. Those choices do not change the built-in checklist.
 
-`swing backtest` can still run v1 and the Appendix A variants on cached bars.
+`swing backtest` can still run v1 and the Appendix A variants on cached bars. The v1 config surface is recorded in `config/v1-surface.example.toml` and is not loaded by `analyze`.
 
 ## Book
 

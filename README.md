@@ -37,6 +37,30 @@ The live checklist stays on v0. Built-in `SwingConfig` numbers are unchanged. `~
 - Keep the core ETF out of `universe.txt`. The CLI manages the satellite only.
 - `account.mode` stays `"cash"`. Size from settled cash, not buying power. You type the orders. This program does not send them. The recorded pricing choice for this book's order size is IBKR Pro Tiered. Re-read the schedule in the account portal before relying on it.
 
+## v1 config surface (not wired)
+
+`swing analyze` stays on the v0 checklist. The values below are the future book. They already match `VARIANTS["v1"]` in the backtest. They are written in `config/v1-surface.example.toml` so the numbers have a file. That file is not loaded. Copying it over `~/.swing/config.toml` makes the CLI reject the config. Do not retune them here. Full notes: [docs/decisions/SECTION8_ANSWERS.md](docs/decisions/SECTION8_ANSWERS.md).
+
+| Key | Value |
+|---|---|
+| `portfolio.slots` | `5` |
+| `portfolio.max_position_frac` | `0.20` |
+| `regime.gate` | `true` |
+| `regime.symbol` | `"SPY"` |
+| `regime.sma` | `200` |
+| `trend.sma` | `200` |
+| `rank.lookback` | `126` |
+| `rank.skip` | `5` |
+| `exit.mode` | `"trail"` |
+| `exit.trail_atr` | `3.0` |
+| `exit.target_r` | `2.0` |
+| `entry.cap_atr` | `1.0` |
+| `stops.initial_atr` | `1.5` |
+| `earnings.min_room_sessions` | `3` |
+| `earnings.after_days` | `1` |
+| `liquidity.min_price` | `5` |
+| `liquidity.min_median_dollar_volume` | `10000000` |
+
 An old `~/Library/Application Support/swing` folder is copied once and left in place.
 
 ## Daily workflow (Cairo)

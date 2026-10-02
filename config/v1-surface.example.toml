@@ -1,0 +1,45 @@
+# v1 config surface. Not wired to swing analyze.
+# The live checklist stays on v0. Do not copy this file to ~/.swing/config.toml.
+# SwingConfig rejects these keys. The numbers are the recorded defaults in
+# docs/decisions/SECTION8_ANSWERS.md and already match VARIANTS["v1"].
+# This file does not retune them.
+
+[portfolio]
+slots = 5
+max_position_frac = 0.20
+
+[regime]
+gate = true
+symbol = "SPY"
+sma = 200
+
+[trend]
+sma = 200
+
+[rank]
+lookback = 126
+skip = 5
+
+[exit]
+mode = "trail"
+trail_atr = 3.0
+target_r = 2.0
+
+[entry]
+cap_atr = 1.0
+
+[stops]
+atr_period = 14
+initial_atr = 1.5
+
+[earnings]
+strict = true
+min_room_sessions = 3
+after_days = 1
+
+[liquidity]
+min_price = 5
+min_median_dollar_volume = 10000000
+
+[benchmark]
+symbol = "SPUS"
