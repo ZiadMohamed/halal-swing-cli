@@ -132,3 +132,5 @@ class MarketData:
     instrument_type: InstrumentType | None = None
     earnings_source: str | None = None
     last_completed_session: date | None = None
+    earnings_disagree: bool = False
+    earnings_override: date | None = None

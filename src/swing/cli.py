@@ -6,12 +6,14 @@ import argparse
 import logging
 import math
 import sys
+from datetime import date
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from swing import __version__
 from swing.analyze import analyze
+from swing.home import migrate_legacy_home
 from swing.codes import ReasonCode
 from swing.config import load_config
 from swing.envfile import load_project_env
@@ -20,6 +22,7 @@ from swing.output.render import render_json, render_text
 
 
 def main(argv: list[str] | None = None) -> int:
+    migrate_legacy_home()
     load_project_env()
     parser = _parser()
     args = parser.parse_args(argv)
@@ -38,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
             positions=positions,
             sector=_sector(args.sector),
             equity_usd=args.equity,
+            earnings_date=args.earnings_date,
         )
     except (ValueError, ValidationError, FileNotFoundError) as exc:
         print(exc, file=sys.stderr)
@@ -102,8 +106,22 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Sector label for this ticker. Used for the 3%% sector heat cap. Omit it and sector heat is not applied.",
     )
+    analyze_parser.add_argument(
+        "--earnings-date",
+        type=_iso_date,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Use this report date for this run when the calendars are missing or wrong. Stamped on the plan.",
+    )
     analyze_parser.add_argument("--verbose", action="store_true", help="Log to stderr. Stdout stays clean for --json.")
     return parser
+
+
+def _iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("earnings-date must be YYYY-MM-DD") from exc
 
 
 def _usd_equity(value: str) -> float:

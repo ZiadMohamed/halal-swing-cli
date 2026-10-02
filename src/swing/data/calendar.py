@@ -68,6 +68,25 @@ class NyseCalendar:
             raise DataError("no NYSE session at that offset", code="calendar")
         return dates[index]
 
+    def sessions_between(self, start: date, end: date) -> int:
+        """How many sessions apart `start` and `end` are. The same day is 0."""
+        if start == end:
+            return 0
+        if start > end:
+            start, end = end, start
+        sessions = self._xnys().sessions_in_range(_timestamp(start), _timestamp(end))
+        dates = [session.date() for session in sessions]
+        if len(dates) < 2:
+            return 0
+        return len(dates) - 1
+
+    def sessions_after(self, start: date, end: date) -> tuple[date, ...]:
+        """Sessions strictly after `start` and on or before `end`."""
+        if end <= start:
+            return ()
+        sessions = self._xnys().sessions_in_range(_timestamp(start), _timestamp(end))
+        return tuple(session.date() for session in sessions if start < session.date() <= end)
+
     def session_on_or_before(self, day: date) -> date:
         if self.is_session(day):
             return day

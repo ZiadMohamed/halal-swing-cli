@@ -19,10 +19,11 @@ from zoneinfo import ZoneInfo
 from swing.config import SwingConfig
 from swing.data.calendar import NyseCalendar
 from swing.data.errors import DataError, MissingApiKeyError
+from swing.data.events import merge_earnings
 from swing.data.finnhub import FinnhubEvents
 from swing.data.massive import MassiveBarProvider
 from swing.data.models import DEFAULT_LOOKBACK_SESSIONS, BarSeries, DividendEvent, EarningsEvent, MarketData
-from swing.data.yahoo_events import YahooEvents, has_next_report
+from swing.data.yahoo_events import YahooEvents
 from swing.data.yfinance_bars import YFinanceBarProvider
 from swing.paths import bars_cache_dir
 
@@ -76,6 +77,7 @@ def load_market_data(
     yahoo: YahooEvents | None = None,
     calendar: NyseCalendar | None = None,
     with_events: bool = True,
+    earnings_date: date | None = None,
 ) -> MarketData:
     """Fetch bars, events, and the next open. Vendor failures stay on the bundle."""
     environ: Mapping[str, str] = os.environ if env is None else env
@@ -97,33 +99,44 @@ def load_market_data(
     except Exception as exc:  # noqa: BLE001
         errors.append(f"vendor_error:calendar:{type(exc).__name__}")
 
-    series: BarSeries | None = None
-    try:
-        series = bar_provider.fetch_daily(symbol, lookback_sessions)
-    except DataError as exc:
-        errors.append(_error_text(exc, config.data.bars_provider))
-    except Exception as exc:  # noqa: BLE001 — keep analyze printable
-        errors.append(f"vendor_error:{config.data.bars_provider}:{type(exc).__name__}")
+    series, bars_provider_name = _load_bars(
+        symbol,
+        config,
+        environ,
+        cache,
+        clock,
+        lookback_sessions,
+        bar_provider,
+        bars is not None,
+        errors,
+    )
 
     instrument = _instrument(series, yahoo_events, symbol) if series is not None else None
 
     earnings: tuple[EarningsEvent, ...] = ()
     earnings_source: str | None = None
     events_known = False
+    earnings_disagree = False
+    earnings_override = None
     if instrument == "ETF":
         events_known = True
         earnings_source = "not_applicable"
     elif with_events:
-        try:
-            earnings = tuple(event_provider.earnings_calendar(symbol))
-            events_known = True
-            earnings_source = "finnhub"
-        except DataError as exc:
-            errors.append(_error_text(exc, "finnhub"))
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"vendor_error:finnhub:{type(exc).__name__}")
-        if not events_known:
-            earnings, events_known, earnings_source = _yahoo_earnings(yahoo_events, symbol, today, errors)
+        merged = _merged_earnings(
+            symbol,
+            event_provider,
+            yahoo_events,
+            today,
+            cal,
+            errors,
+            earnings_date,
+        )
+        earnings = merged.events
+        events_known = merged.known
+        earnings_source = merged.source
+        earnings_disagree = merged.disagree
+        if earnings_date is not None:
+            earnings_override = earnings_date
 
     dividends: tuple[DividendEvent, ...] = ()
     if with_events:
@@ -147,7 +160,7 @@ def load_market_data(
     return MarketData(
         ticker=symbol,
         status=status,
-        bars_provider=config.data.bars_provider,
+        bars_provider=bars_provider_name,
         events_provider=config.data.events_provider,
         bars=series,
         earnings=earnings,
@@ -158,6 +171,8 @@ def load_market_data(
         instrument_type=instrument,
         earnings_source=earnings_source,
         last_completed_session=expected,
+        earnings_disagree=earnings_disagree,
+        earnings_override=earnings_override,
     )
 
 
@@ -174,24 +189,59 @@ def _instrument(series: BarSeries, yahoo: YahooEvents, symbol: str) -> str | Non
     return text if text in {"EQUITY", "ETF"} else None
 
 
-def _yahoo_earnings(
-    yahoo: YahooEvents,
-    symbol: str,
-    today: date,
-    errors: list[str],
-) -> tuple[tuple[EarningsEvent, ...], bool, str | None]:
+def _load_bars(symbol, config, environ, cache, clock, lookback, provider, injected, errors):
+    """Massive, then yfinance, when Massive is the configured source and was not injected."""
+    name = config.data.bars_provider
     try:
-        found = tuple(yahoo.earnings(symbol))
+        series = provider.fetch_daily(symbol, lookback)
+    except DataError as exc:
+        errors.append(_error_text(exc, name))
+        series = None
+    except Exception as exc:  # noqa: BLE001 — keep analyze printable
+        errors.append(f"vendor_error:{name}:{type(exc).__name__}")
+        series = None
+    if series is not None or injected or name != "massive":
+        used = series.provider if series is not None else name
+        return series, used
+    fallback = YFinanceBarProvider(cache_dir=cache, now=lambda: clock)
+    try:
+        series = fallback.fetch_daily(symbol, lookback)
     except DataError as exc:
         errors.append(_error_text(exc, "yfinance"))
-        return (), False, None
+        return None, "yfinance"
     except Exception as exc:  # noqa: BLE001
         errors.append(f"vendor_error:yfinance:{type(exc).__name__}")
-        return (), False, None
-    if not has_next_report(found, today):
-        errors.append("earnings_unknown:yfinance:no dated next report")
-        return found, False, None
-    return found, True, "yfinance"
+        return None, "yfinance"
+    return series, series.provider
+
+
+def _merged_earnings(symbol, events, yahoo, today, calendar, errors, earnings_date):
+    finnhub_events = None
+    try:
+        finnhub_events = tuple(events.earnings_calendar(symbol))
+    except DataError as exc:
+        errors.append(_error_text(exc, "finnhub"))
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"vendor_error:finnhub:{type(exc).__name__}")
+    yahoo_events = None
+    try:
+        yahoo_events = tuple(yahoo.earnings(symbol))
+    except DataError as exc:
+        if finnhub_events is None:
+            errors.append(_error_text(exc, "yfinance"))
+    except Exception as exc:  # noqa: BLE001
+        if finnhub_events is None:
+            errors.append(f"vendor_error:yfinance:{type(exc).__name__}")
+    merged = merge_earnings(
+        finnhub_events,
+        yahoo_events,
+        today=today,
+        calendar=calendar,
+        override=earnings_date,
+    )
+    if not merged.known and earnings_date is None:
+        errors.append("earnings_unknown:no dated next report")
+    return merged
 
 
 def _error_text(exc: DataError, source: str) -> str:

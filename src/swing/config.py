@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -132,8 +131,9 @@ class SwingConfig(_Strict):
 def resolve_config_path(env: Mapping[str, str], *, discover_files: bool) -> Path | None:
     """Resolve a config file.
 
-    Order: SWING_CONFIG, ./swing.toml (only when discovering), SWING_DATA_DIR/config.toml,
-    then the platform file. An explicit load_config(path=...) never reaches this.
+    Order: SWING_CONFIG, ./swing.toml (only when discovering), then
+    `SWING_HOME` or `SWING_DATA_DIR` config.toml, then `~/.swing/config.toml`
+    when discovering. An explicit load_config(path=...) never reaches this.
     """
     raw = env.get("SWING_CONFIG")
     if raw:
@@ -142,21 +142,17 @@ def resolve_config_path(env: Mapping[str, str], *, discover_files: bool) -> Path
         cwd_file = Path.cwd() / "swing.toml"
         if cwd_file.is_file():
             return cwd_file
-    data_dir = env.get("SWING_DATA_DIR")
-    if data_dir:
-        relocated = Path(data_dir).expanduser() / "config.toml"
+    override = env.get("SWING_HOME") or env.get("SWING_DATA_DIR")
+    if override:
+        relocated = Path(override).expanduser() / "config.toml"
         if relocated.is_file():
             return relocated
     if not discover_files:
         return None
-    home = Path.home()
-    if sys.platform == "darwin":
-        mac = home / "Library" / "Application Support" / "swing" / "config.toml"
-        return mac if mac.is_file() else None
-    xdg_root = env.get("XDG_CONFIG_HOME")
-    base = Path(xdg_root).expanduser() if xdg_root else home / ".config"
-    other = base / "swing" / "config.toml"
-    return other if other.is_file() else None
+    from swing.home import swing_home
+
+    home_file = swing_home(env=env) / "config.toml"
+    return home_file if home_file.is_file() else None
 
 
 def load_config(path: Path | None = None, env: Mapping[str, str] | None = None) -> SwingConfig:

@@ -6,7 +6,9 @@ from swing.analyze import analyze
 from swing.brain.result import ChecklistResult
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
+from swing.data.errors import VendorError
 from swing.data.factory import load_market_data
+from swing.data.yfinance_bars import YFinanceBarProvider
 from swing.data.models import (
     BarSeries,
     DailyBar,
@@ -129,8 +131,14 @@ def test_brain_receives_market_positions_and_sector_and_not_research():
     assert "research" not in seen
 
 
-def test_missing_vendor_keys_attach_typed_errors_and_stay_no_trade(tmp_path):
+def test_missing_vendor_keys_attach_typed_errors_and_stay_no_trade(tmp_path, monkeypatch):
     cfg = SwingConfig.model_validate({"data": {"bars_provider": "massive"}})
+
+    def offline(self, ticker: str, lookback_sessions: int):
+        del self, ticker, lookback_sessions
+        raise VendorError("offline", kind="upstream", endpoint="history")
+
+    monkeypatch.setattr(YFinanceBarProvider, "fetch_daily", offline)
     market = load_market_data(
         "AAPL",
         cfg,

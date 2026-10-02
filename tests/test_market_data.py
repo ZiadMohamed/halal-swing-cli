@@ -154,6 +154,66 @@ def test_dividend_failure_never_changes_events_known(tmp_path):
     assert market.errors == ()
 
 
+def test_earnings_disagreement_warns_and_does_not_block(tmp_path):
+    market = _load(
+        _series(),
+        finnhub=_finnhub([]),
+        yahoo=FakeYahoo(calendar=RuntimeError("down")),
+        tmp_path=tmp_path,
+    )
+    market = replace(market, earnings_disagree=True)
+    envelope = _decide(market)
+    assert envelope.decision is DecisionKind.ENTER_LONG
+    assert any(item.code is ReasonCode.WARN_EARNINGS_DISAGREE for item in envelope.warnings)
+
+
+def test_earnings_date_override_is_stamped_on_the_plan(tmp_path):
+    finnhub = FinnhubEvents(api_key="", transport=lambda *_a: None, today=NOW.date())
+    market = _load(_series(), finnhub=finnhub, yahoo=FakeYahoo(calendar={}, earnings=None), tmp_path=tmp_path)
+    assert market.events_known is False
+    envelope = analyze(
+        "AAPL",
+        config=equity_config(),
+        env={},
+        market=market,
+        earnings_date=date(2026, 12, 15),
+    )
+    assert envelope.decision is DecisionKind.ENTER_LONG
+    assert envelope.plan is not None
+    assert envelope.plan.earnings_date == "2026-12-15"
+    assert envelope.data.earnings_override == "2026-12-15"
+    assert envelope.data.earnings_source == "override"
+    assert envelope.data.events_known is True
+
+
+def test_massive_failure_falls_back_to_yfinance(tmp_path, monkeypatch):
+    from swing.data.errors import MissingApiKeyError
+    from swing.data.massive import MassiveBarProvider
+    from swing.data.yfinance_bars import YFinanceBarProvider
+
+    def boom(self, ticker: str, lookback_sessions: int):
+        del self, ticker, lookback_sessions
+        raise MissingApiKeyError("MASSIVE_API_KEY")
+
+    series = _series()
+    monkeypatch.setattr(MassiveBarProvider, "fetch_daily", boom)
+    monkeypatch.setattr(YFinanceBarProvider, "fetch_daily", lambda self, ticker, lookback: series)
+    cfg = SwingConfig.model_validate({"data": {"bars_provider": "massive"}})
+    market = load_market_data(
+        "AAPL",
+        cfg,
+        env={"MASSIVE_API_KEY": "test-key"},
+        now=NOW,
+        cache_dir=tmp_path,
+        events=FinnhubEvents(api_key="fh-key", transport=lambda *_a: FINNHUB_EARNINGS, today=NOW.date()),
+        yahoo=YahooEvents(FakeYahoo(calendar={"Earnings Date": [date(2026, 10, 29)]}), today=NOW.date()),
+    )
+    assert market.bars is series
+    assert market.bars_provider == "yfinance"
+    assert "missing_api_key:MASSIVE_API_KEY" in market.errors
+    assert market.events_known is True
+
+
 def test_etf_skips_earnings_and_passes_the_gate_with_a_note(tmp_path):
     urls: list[str] = []
     yahoo = FakeYahoo(calendar={})

@@ -5,18 +5,18 @@ from pathlib import Path
 from swing.paths import bars_cache_dir, default_data_dir, journal_path
 
 
-def test_macos_uses_application_support():
+def test_macos_uses_dot_swing():
     path = default_data_dir(platform="darwin", home=Path("/Users/ziad"), env={})
-    assert path == Path("/Users/ziad/Library/Application Support/swing")
+    assert path == Path("/Users/ziad/.swing")
 
 
-def test_linux_fallback_is_labeled_by_using_xdg():
+def test_linux_uses_the_same_dot_swing_root():
     path = default_data_dir(
         platform="linux",
         home=Path("/home/ziad"),
         env={"XDG_DATA_HOME": "/home/ziad/.local/share"},
     )
-    assert path == Path("/home/ziad/.local/share/swing")
+    assert path == Path("/home/ziad/.swing")
 
 
 def test_cache_and_journal_follow_the_data_dir():

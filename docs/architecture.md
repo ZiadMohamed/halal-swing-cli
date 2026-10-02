@@ -33,7 +33,8 @@ src/swing/
   analyze.py        orchestration only
   envelope.py       schema 2.0.0 (`instructions` is null unless ENTER_LONG)
   disclaimer.py
-  paths.py          macOS Application Support, Linux fallback
+  home.py           ~/.swing, copied once from the old macOS folder
+  paths.py          cache and journal under the home directory
   brain/            gate order + ChecklistBrain
   output/render.py  action card, --explain, and JSON
   journal/paper.py  append-only paper JSONL
@@ -119,7 +120,7 @@ Install and daily use are documented for macOS. uv provides CPython for both arm
 
 Data and config root on macOS:
 
-`~/Library/Application Support/swing/`
+`~/.swing/`
 
 - `config.toml` optional
 - `cache/bars/` Parquet (Chat 2)

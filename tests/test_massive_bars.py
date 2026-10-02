@@ -11,6 +11,7 @@ from swing.config import SwingConfig
 from swing.data.errors import MissingApiKeyError
 from swing.data.factory import build_bar_provider
 from swing.data.massive import MassiveBarProvider
+from swing.data.throttle import RateLimiter
 
 _FIXTURES = Path("tests/fixtures")
 _NY = ZoneInfo("America/New_York")
@@ -27,16 +28,13 @@ def test_recorded_responses_return_split_adjusted_bars(tmp_path: Path):
         urls.append(url)
         assert headers["Authorization"] == "Bearer test-key"
         assert "test-key" not in url
-        if "/v2/aggs/" in url and "adjusted=true" in url:
+        if "/v2/aggs/ticker/" in url and "adjusted=true" in url:
             return _payload("massive_aggs_adjusted.json")
-        if "/v2/aggs/" in url and "adjusted=false" in url:
-            return _payload("massive_aggs_raw.json")
+        if "adjusted=false" in url or "/dividends" in url:
+            raise AssertionError(url)
         if "/stocks/v1/splits" in url:
-            assert "ticker=AAPL" in url
+            assert "ticker=" not in url
             return _payload("massive_splits.json")
-        if "/stocks/v1/dividends" in url:
-            assert "ticker=AAPL" in url
-            return _payload("massive_dividends.json")
         raise AssertionError(url)
 
     provider = MassiveBarProvider(
@@ -44,6 +42,7 @@ def test_recorded_responses_return_split_adjusted_bars(tmp_path: Path):
         cache_dir=tmp_path,
         transport=transport,
         now=lambda: datetime(2024, 9, 3, 17, 0, tzinfo=_NY),
+        limiter=RateLimiter(1000, sleep=lambda _seconds: None),
     )
     series = provider.fetch_daily("AAPL", 10)
     assert series.provider == "massive"
@@ -51,7 +50,7 @@ def test_recorded_responses_return_split_adjusted_bars(tmp_path: Path):
     assert series.corp_action_suspect is False
     assert [bar.session.isoformat() for bar in series.bars] == ["2024-08-29", "2024-08-30", "2024-09-03"]
     assert series.bars[0].close == 100.0
-    assert series.bars[0].raw_close == 400.0
+    assert series.bars[0].raw_close == 100.0
     assert series.bars[-1].open == 102.0
     assert all("finnhub" not in url for url in urls)
     assert all("candle" not in url for url in urls)
@@ -71,7 +70,12 @@ def test_vendor_error_redacts_the_api_key(tmp_path: Path):
     def transport(url: str, headers: dict[str, str]):
         raise RuntimeError("upstream said test-key is invalid")
 
-    provider = MassiveBarProvider(api_key="test-key", cache_dir=tmp_path, transport=transport)
+    provider = MassiveBarProvider(
+        api_key="test-key",
+        cache_dir=tmp_path,
+        transport=transport,
+        limiter=RateLimiter(1000, sleep=lambda _seconds: None),
+    )
     with pytest.raises(Exception) as caught:
         provider.fetch_daily("AAPL", 5)
     assert "test-key" not in str(caught.value)

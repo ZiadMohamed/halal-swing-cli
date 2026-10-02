@@ -11,6 +11,7 @@ _EXAMPLE_KEYS = (
     "FINNHUB_API_KEY",
     "MASSIVE_API_KEY",
     "SWING_BARS_PROVIDER",
+    "SWING_HOME",
     "SWING_CONFIG",
     "SWING_DATA_DIR",
 )
@@ -79,9 +80,9 @@ def test_swing_data_dir_in_the_cwd_file_selects_the_data_dotenv(tmp_path):
     assert env["MASSIVE_API_KEY"] == "custom"
 
 
-def test_macos_application_support_dotenv_is_loaded(tmp_path):
+def test_dot_swing_dotenv_is_loaded(tmp_path):
     home = tmp_path / "Users" / "ziad"
-    data = home / "Library" / "Application Support" / "swing"
+    data = home / ".swing"
     data.mkdir(parents=True)
     (data / ".env").write_text("FINNHUB_API_KEY=mac-key\n", encoding="utf-8")
     cwd = tmp_path / "proj"

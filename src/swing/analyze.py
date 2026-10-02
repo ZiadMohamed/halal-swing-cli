@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Mapping
+from datetime import date
 from typing import Literal
 
 from swing.brain.checklist import ChecklistBrain
@@ -14,7 +15,7 @@ from swing.brain.result import ChecklistResult
 from swing.codes import DecisionKind
 from swing.config import SwingConfig, load_config
 from swing.data.factory import load_market_data
-from swing.data.models import MarketData
+from swing.data.models import EarningsEvent, MarketData
 from swing.disclaimer import DISCLAIMER, SHARIAH_NOTE
 from swing.envelope import (
     DataView,
@@ -49,6 +50,7 @@ def analyze(
     positions: tuple[OpenPosition, ...] = (),
     sector: str | None = None,
     equity_usd: float | None = None,
+    earnings_date: date | None = None,
 ) -> Envelope:
     """Run one checklist pass.
 
@@ -60,7 +62,9 @@ def analyze(
     cfg = config if config is not None else load_config(env=env if env is not None else None)
     run_cfg, effective_equity = _equity_for_run(cfg, equity_usd)
     if market is None and fetch_market:
-        market = load_market_data(symbol, cfg, env=env)
+        market = load_market_data(symbol, cfg, env=env, earnings_date=earnings_date)
+    elif earnings_date is not None and market is not None:
+        market = _with_earnings_override(market, symbol, earnings_date)
     checklist = _evaluate(brain or ChecklistBrain(), symbol, run_cfg, market, positions, sector)
     return _envelope(
         ticker=symbol,
@@ -71,7 +75,7 @@ def analyze(
         gates=checklist.gates,
         confidence=checklist.confidence,
         side=checklist.side,
-        plan=_stamp_plan_equity(checklist.plan, effective_equity),
+        plan=_stamp_earnings(_stamp_plan_equity(checklist.plan, effective_equity), earnings_date),
         market=market,
         equity_usd=effective_equity,
     )
@@ -97,6 +101,26 @@ def _finite_equity(equity_usd: float) -> float:
     if not math.isfinite(equity) or equity < 0:
         raise ValueError("equity must be a non-negative finite number of USD. No equity figure was invented.")
     return equity
+
+
+def _with_earnings_override(market: MarketData, ticker: str, earnings_date: date) -> MarketData:
+    from dataclasses import replace
+
+    event = EarningsEvent(ticker=ticker, report_date=earnings_date, hour="unknown", source="override")
+    return replace(
+        market,
+        earnings=(event,),
+        events_known=True,
+        earnings_source="override",
+        earnings_override=earnings_date,
+        earnings_disagree=False,
+    )
+
+
+def _stamp_earnings(plan: Plan | None, earnings_date: date | None) -> Plan | None:
+    if plan is None or earnings_date is None:
+        return plan
+    return plan.model_copy(update={"earnings_date": earnings_date.isoformat()})
 
 
 def _stamp_plan_equity(plan: Plan | None, equity_usd: float | None) -> Plan | None:
@@ -162,6 +186,7 @@ def _data_view(market: MarketData | None) -> DataView:
         last_completed_session=(
             None if market.last_completed_session is None else market.last_completed_session.isoformat()
         ),
+        earnings_override=None if market.earnings_override is None else market.earnings_override.isoformat(),
     )
 
 

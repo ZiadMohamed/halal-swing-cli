@@ -36,6 +36,7 @@ class Plan(_Strict):
     next_open: str
     setup: Literal["BO_RVOL", "PB_EMA", "RSI2_MR"] | None = None
     equity_usd: float | None = Field(default=None, ge=0)
+    earnings_date: str | None = None
 
 
 class Instructions(_Strict):
@@ -94,6 +95,7 @@ class DataView(_Strict):
     instrument_type: Literal["EQUITY", "ETF"] | None = None
     reconstructed: bool = False
     last_completed_session: str | None = None
+    earnings_override: str | None = None
 
 
 class Envelope(_Strict):

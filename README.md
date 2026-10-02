@@ -38,7 +38,7 @@ uv run swing analyze AAPL
 uv run swing analyze AAPL --explain
 ```
 
-On startup the CLI loads `.env` from the current directory, then `.env` in the swing data directory (`~/Library/Application Support/swing` on macOS) for any variable that is still unset. A variable already exported in the shell is left as-is. Keys are not written into config, logs, or `config_hash`.
+On startup the CLI loads `.env` from the current directory, then `.env` in `~/.swing` for any variable that is still unset. A one-time copy brings files over from `~/Library/Application Support/swing` and does not delete that folder. A variable already exported in the shell is left as-is. Keys are not written into config, logs, or `config_hash`.
 
 The default text is an action card: decision, reason codes, the plan when one exists, both clocks, `config_hash`, and the disclaimer. `--explain` adds every gate and the longer buy and sell numbers. `--json` prints the envelope (schema `2.0.0`).
 
@@ -46,7 +46,7 @@ The default text is an action card: decision, reason codes, the plan when one ex
 
 Config and data on macOS live under:
 
-`~/Library/Application Support/swing/`
+`~/.swing/`
 
 | Path | Use |
 |---|---|
@@ -80,7 +80,7 @@ The default card prints the shorter Buy and Sell form: setup, share count, cash 
 
 ## Paper journal
 
-On macOS the file is `~/Library/Application Support/swing/journal.jsonl`. `SWING_DATA_DIR` overrides that root. `analyze` does not write the file. `NO_TRADE` does not write a line and does not rewrite earlier ones.
+On macOS the file is `~/.swing/journal.jsonl`. `SWING_HOME` overrides that root. `analyze` does not write the file. `NO_TRADE` does not write a line and does not rewrite earlier ones.
 
 A line is one JSON object. `size_shares` is copied from the plan. `risk_fraction` is `size_shares * (entry - stop) / equity_usd`, using the equity that sized that plan (`--equity` when you pass it, otherwise `[account].equity_usd`). If equity is unset, nothing is invented and nothing is journaled.
 
@@ -88,7 +88,7 @@ Every line stays open risk. v0 does not delete or rewrite lines, so the book onl
 
 `--sector` is optional. Pass it when you know the ticker's sector and the 3% sector cap should apply. A blank sector is not lumped into an unknown bucket. There is no sector vendor in v0.
 
-Put equity in the TOML you actually load (`--config`, `./swing.toml`, or `~/Library/Application Support/swing/config.toml`):
+Put equity in the TOML you actually load (`--config`, `./swing.toml`, or `~/.swing/config.toml`):
 
 ```toml
 [account]
@@ -115,7 +115,7 @@ None are required to print an envelope. The same names can live in `.env` (copy 
 | `MASSIVE_API_KEY` | only if `bars_provider` is `massive` | Bars from Massive Basic. Sent as `Authorization: Bearer`, not in the URL |
 | `SWING_BARS_PROVIDER` | no | `yfinance` (default) or `massive` |
 | `SWING_CONFIG` | no | TOML file path |
-| `SWING_DATA_DIR` | no | Overrides the data root. If `config.toml` is inside it, that file is used unless `--config` or `SWING_CONFIG` is set |
+| `SWING_HOME` | no | Data root. Default `~/.swing`. `SWING_DATA_DIR` is the older name |
 
 Keys stay in the environment. They are not written into config, logs, or `config_hash`.
 

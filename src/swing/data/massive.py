@@ -1,30 +1,39 @@
-"""Massive Basic daily bars. Adjusted OHLC is split-adjusted, not dividend-adjusted."""
+"""Massive Basic daily bars.
+
+One adjusted aggregate backfill per ticker, one grouped daily call per missing
+session for the universe, and one splits list per day. Raw aggregates and
+dividend endpoints are not called.
+"""
 
 from __future__ import annotations
 
+import json
 import math
+import sys
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
-from swing.data.bars import cacheable, drop_invalid, through
-from swing.data.cache import read_fresh_bars, write_bars
+from swing.data.bars import cacheable, is_valid, sanitize
+from swing.data.cache import read_bars, read_fresh_bars, write_bars
 from swing.data.calendar import NyseCalendar
-from swing.data.corp_actions import assess_corp_actions
 from swing.data.errors import VendorError
 from swing.data.http import endpoint_of, get_json, redact, strip_secrets
-from swing.data.models import BarSeries, CorporateAction, DailyBar
+from swing.data.models import BarSeries, DailyBar
+from swing.data.throttle import RateLimiter
 
 _NY = ZoneInfo("America/New_York")
 _BASE = "https://api.massive.com"
+_BACKFILL_DAYS = 365 * 2
 _Transport = Callable[[str, Mapping[str, str]], Any]
 
 
 class MassiveBarProvider:
-    """Daily aggregates from Massive Basic, plus splits and cash dividends."""
+    """Adjusted daily bars from Massive Basic, throttled to 5 calls a minute."""
 
     def __init__(
         self,
@@ -34,14 +43,18 @@ class MassiveBarProvider:
         transport: _Transport | None = None,
         now: Callable[[], datetime] | None = None,
         calendar: NyseCalendar | None = None,
+        limiter: RateLimiter | None = None,
         base_url: str = _BASE,
+        progress: Callable[[str], None] | None = None,
     ) -> None:
         self._api_key = api_key
-        self._cache_dir = cache_dir
+        self._cache_dir = Path(cache_dir)
         self._transport = transport or _default_transport
         self._now = now or (lambda: datetime.now(_NY))
         self._calendar = calendar or NyseCalendar()
+        self._limiter = limiter or RateLimiter(5)
         self._base = base_url.rstrip("/")
+        self._progress = progress or _stderr
 
     def fetch_daily(self, ticker: str, lookback_sessions: int) -> BarSeries:
         symbol = ticker.strip().upper()
@@ -49,31 +62,112 @@ class MassiveBarProvider:
         cached = read_fresh_bars(self._cache_dir, symbol, lookback_sessions, now, self._calendar)
         if cached is not None:
             return cached
-        start = now.date() - timedelta(days=lookback_sessions * 2 + 30)
+        self._limiter.acquire()
+        series = self._backfill(symbol, now)
+        splits = self._split_sessions(self._calendar.last_completed_session(now))
+        return self._store(series, splits.get(symbol, set()), lookback_sessions, now)
+
+    def load_universe(self, tickers: list[str], lookback_sessions: int) -> dict[str, BarSeries]:
+        """Fill every ticker from cache, grouped dailies, and throttled backfill.
+
+        A warm cache plus a splits list already stored for the day makes no
+        HTTP call. A missing session is one grouped call for the whole universe.
+        """
+        now = self._now()
+        last = self._calendar.last_completed_session(now)
+        symbols = [ticker.strip().upper() for ticker in tickers]
+        loaded: dict[str, BarSeries] = {}
+        backfill: list[str] = []
+        for symbol in symbols:
+            cached = read_bars(self._cache_dir, symbol)
+            if cached is None or len(cached.bars) < lookback_sessions or _needs_backfill(cached, last, self._calendar):
+                backfill.append(symbol)
+            else:
+                loaded[symbol] = cached
+        total = len(backfill)
+        for index, symbol in enumerate(backfill, start=1):
+            self._progress(f"backfill {index}/{total} {symbol}")
+            self._limiter.acquire()
+            loaded[symbol] = self._backfill(symbol, now)
+
+        missing: set[date] = set()
+        for series in loaded.values():
+            if not series.bars:
+                continue
+            missing.update(self._calendar.sessions_after(series.bars[-1].session, last))
+        for session in sorted(missing):
+            self._limiter.acquire()
+            grouped = self._grouped(session)
+            for symbol, series in list(loaded.items()):
+                bar = grouped.get(symbol)
+                if bar is None or any(existing.session == bar.session for existing in series.bars):
+                    continue
+                loaded[symbol] = replace(series, bars=tuple(sorted((*series.bars, bar), key=lambda item: item.session)))
+
+        splits = self._split_sessions(last)
+        stored: dict[str, BarSeries] = {}
+        for symbol, series in loaded.items():
+            stored[symbol] = self._store(series, splits.get(symbol, set()), lookback_sessions, now)
+        return stored
+
+    def _backfill(self, symbol: str, now: datetime) -> BarSeries:
+        start = now.date() - timedelta(days=_BACKFILL_DAYS)
         end = now.date()
         try:
-            adjusted = self._aggs(symbol, start, end, adjusted=True)
-            raw = self._aggs(symbol, start, end, adjusted=False)
-            splits = self._pages(
-                "/stocks/v1/splits",
-                {"ticker": symbol, "limit": "1000", "sort": "execution_date.asc"},
-            )
-            dividends = self._pages("/stocks/v1/dividends", {"ticker": symbol, "limit": "1000"})
+            rows = self._aggs(symbol, start, end)
         except VendorError as exc:
             raise VendorError(
                 redact(exc.detail, self._api_key), kind=exc.kind, endpoint=exc.endpoint, status=exc.status
             ) from None
-        series = _series_from_massive(symbol, adjusted, raw, splits, dividends)
-        series = replace(series, bars=through(series.bars, self._calendar.last_completed_session(now)))
-        if not series.bars:
-            raise VendorError("empty_bars", kind="upstream", endpoint="/v2/aggs")
-        write_bars(self._cache_dir, cacheable(series, self._calendar.last_settled_session(now)))
-        return series.sliced(lookback_sessions)
+        bars = [_bar_from_row(row) for row in rows]
+        return BarSeries(
+            ticker=symbol,
+            provider="massive",
+            bars=tuple(bar for bar in bars if bar is not None),
+            corp_action_suspect=False,
+            corp_action_reasons=(),
+            adjustment="split",
+        )
 
-    def _aggs(self, symbol: str, start: date, end: date, *, adjusted: bool) -> list[dict[str, Any]]:
+    def _store(self, series: BarSeries, split_sessions: set[date], lookback: int, now: datetime) -> BarSeries:
+        last = self._calendar.last_completed_session(now)
+        cleaned, reasons = sanitize(series.bars, last_session=last, split_sessions=split_sessions)
+        if not cleaned:
+            raise VendorError("empty_bars", kind="upstream", endpoint="/v2/aggs")
+        stored = replace(series, bars=cleaned, corp_action_suspect=bool(reasons), corp_action_reasons=reasons)
+        write_bars(self._cache_dir, cacheable(stored, self._calendar.last_settled_session(now)))
+        return stored.sliced(lookback)
+
+    def _aggs(self, symbol: str, start: date, end: date) -> list[dict[str, Any]]:
         path = f"/v2/aggs/ticker/{symbol}/range/1/day/{start.isoformat()}/{end.isoformat()}"
-        params = {"adjusted": "true" if adjusted else "false", "sort": "asc", "limit": "50000"}
-        return self._pages(path, params)
+        return self._pages(path, {"adjusted": "true", "sort": "asc", "limit": "50000"})
+
+    def _grouped(self, session: date) -> dict[str, DailyBar]:
+        path = f"/v2/aggs/grouped/locale/us/market/stocks/{session.isoformat()}"
+        payload = self._get(path, {"adjusted": "true"})
+        return parse_grouped_daily(payload, session)
+
+    def _split_sessions(self, day: date) -> dict[str, set[date]]:
+        path = self._cache_dir / "splits.json"
+        cached = _read_splits(path, day)
+        if cached is not None:
+            return cached
+        self._limiter.acquire()
+        try:
+            rows = self._pages("/stocks/v1/splits", {"limit": "1000", "sort": "execution_date.desc"})
+        except VendorError as exc:
+            raise VendorError(
+                redact(exc.detail, self._api_key), kind=exc.kind, endpoint=exc.endpoint, status=exc.status
+            ) from None
+        found: dict[str, set[date]] = {}
+        for row in rows:
+            symbol = row.get("ticker")
+            session = _iso_date(row.get("execution_date"))
+            if not isinstance(symbol, str) or session is None:
+                continue
+            found.setdefault(symbol.upper(), set()).add(session)
+        _write_splits(path, day, found)
+        return found
 
     def _pages(self, path: str, params: Mapping[str, str]) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -114,80 +208,62 @@ class MassiveBarProvider:
             ) from None
 
 
+def parse_grouped_daily(payload: Any, session: date) -> dict[str, DailyBar]:
+    """Map a grouped-daily payload to valid bars for that session."""
+    if not isinstance(payload, dict):
+        raise VendorError("payload is not an object", kind="bad_payload", endpoint="/v2/aggs/grouped")
+    status = payload.get("status")
+    if status not in (None, "OK", "DELAYED"):
+        raise VendorError(f"status_{status}", kind="bad_payload", endpoint="/v2/aggs/grouped")
+    rows = payload.get("results") or []
+    if not isinstance(rows, list):
+        raise VendorError("results is not a list", kind="bad_payload", endpoint="/v2/aggs/grouped")
+    found: dict[str, DailyBar] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        symbol = row.get("T")
+        if not isinstance(symbol, str) or not symbol:
+            continue
+        bar = _bar_from_row(row, session=session)
+        if bar is not None and is_valid(bar):
+            found[symbol.upper()] = bar
+    return found
+
+
+def _bar_from_row(row: Mapping[str, Any], session: date | None = None) -> DailyBar | None:
+    day = session if session is not None else _session(row.get("t"))
+    if day is None:
+        return None
+    close = _num(row.get("c"))
+    return DailyBar(
+        session=day,
+        open=_num(row.get("o")),
+        high=_num(row.get("h")),
+        low=_num(row.get("l")),
+        close=close,
+        volume=_num(row.get("v")),
+        raw_close=close,
+    )
+
+
 def _default_transport(url: str, headers: Mapping[str, str]) -> Any:
     return get_json(url, headers)
 
 
-def _series_from_massive(
-    ticker: str,
-    adjusted_rows: list[dict[str, Any]],
-    raw_rows: list[dict[str, Any]],
-    split_rows: list[dict[str, Any]],
-    dividend_rows: list[dict[str, Any]],
-) -> BarSeries:
-    raw_by_session = {}
-    for row in raw_rows:
-        session = _session(row.get("t"))
-        if session is None:
-            continue
-        raw_by_session[session] = row
-    bars: list[DailyBar] = []
-    for row in adjusted_rows:
-        session = _session(row.get("t"))
-        raw = raw_by_session.get(session) if session is not None else None
-        if session is None or raw is None:
-            continue
-        bars.append(
-            DailyBar(
-                session=session,
-                open=_num(row.get("o")),
-                high=_num(row.get("h")),
-                low=_num(row.get("l")),
-                close=_num(row.get("c")),
-                volume=_num(row.get("v")),
-                raw_close=_num(raw.get("c")),
-            )
-        )
-    actions = _actions(split_rows, dividend_rows)
-    ordered = drop_invalid(sorted(bars, key=lambda bar: bar.session))
-    assessment = assess_corp_actions(ordered, actions, adjustment="split")
-    return BarSeries(
-        ticker=ticker,
-        provider="massive",
-        bars=ordered,
-        corp_action_suspect=assessment.suspect,
-        corp_action_reasons=assessment.reasons,
-        adjustment="split",
-    )
+def _needs_backfill(series: BarSeries, last: date, calendar: NyseCalendar) -> bool:
+    """A long gap is a backfill. One or a few missing sessions use grouped daily."""
+    if not series.bars:
+        return True
+    return len(calendar.sessions_after(series.bars[-1].session, last)) > 5
 
 
-def _actions(split_rows: list[dict[str, Any]], dividend_rows: list[dict[str, Any]]) -> list[CorporateAction]:
-    actions: list[CorporateAction] = []
-    for row in split_rows:
-        session = _iso_date(row.get("execution_date"))
-        split_to = row.get("split_to")
-        split_from = row.get("split_from")
-        if session is None or split_to in (None, 0) or split_from in (None, 0):
-            continue
-        actions.append(
-            CorporateAction(
-                session=session,
-                kind="split",
-                split_to=float(split_to),
-                split_from=float(split_from),
-            )
-        )
-    for row in dividend_rows:
-        session = _iso_date(row.get("ex_dividend_date"))
-        amount = row.get("cash_amount")
-        if session is None or amount is None:
-            continue
-        actions.append(CorporateAction(session=session, kind="dividend", amount=float(amount)))
-    return actions
+def _stderr(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
 def _session(timestamp: object) -> date | None:
-    if not isinstance(timestamp, (int, float)):
+    if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
         return None
     moment = datetime.fromtimestamp(timestamp / 1000, tz=_NY)
     return moment.date()
@@ -200,7 +276,38 @@ def _iso_date(value: object) -> date | None:
 
 
 def _num(value: object) -> float:
-    """Missing stays NaN so `drop_invalid` removes the row; never read as 0."""
+    """Missing stays NaN so invalid rows are dropped. Never read as 0."""
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     return math.nan
+
+
+def _read_splits(path: Path, day: date) -> dict[str, set[date]] | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("day") != day.isoformat():
+        return None
+    rows = payload.get("splits")
+    if not isinstance(rows, dict):
+        return None
+    found: dict[str, set[date]] = {}
+    for symbol, sessions in rows.items():
+        if not isinstance(symbol, str) or not isinstance(sessions, list):
+            continue
+        days = {date.fromisoformat(item) for item in sessions if isinstance(item, str)}
+        if days:
+            found[symbol] = days
+    return found
+
+
+def _write_splits(path: Path, day: date, splits: dict[str, set[date]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "day": day.isoformat(),
+        "splits": {symbol: sorted(item.isoformat() for item in sessions) for symbol, sessions in splits.items()},
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")

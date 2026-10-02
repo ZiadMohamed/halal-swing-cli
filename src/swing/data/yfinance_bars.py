@@ -23,9 +23,9 @@ import pandas as pd
 from swing.data.bars import cacheable, drop_invalid, is_valid, through
 from swing.data.cache import read_fresh_bars, write_bars
 from swing.data.calendar import NyseCalendar
-from swing.data.corp_actions import assess_corp_actions
+from swing.data.bars import sanitize
 from swing.data.errors import VendorError
-from swing.data.models import BarSeries, CorporateAction, DailyBar
+from swing.data.models import BarSeries, DailyBar
 
 _NY = ZoneInfo("America/New_York")
 _HOUR = timedelta(hours=1)
@@ -148,19 +148,18 @@ class YFinanceBarProvider:
                 bars.append(rebuilt)
                 reconstructed = True
         kept = {bar.session for bar in bars}
-        splits = [
-            CorporateAction(session=row.session, kind="split", split_to=row.split, split_from=1.0)
+        split_sessions = {
+            row.session
             for row in rows
             if row.session in kept and math.isfinite(row.split) and row.split > 0
-        ]
-        ordered = tuple(bars)
-        assessment = assess_corp_actions(ordered, splits, adjustment="split_and_dividend")
+        }
+        ordered, reasons = sanitize(tuple(bars), last_session=expected, split_sessions=split_sessions)
         series = BarSeries(
             ticker=symbol,
             provider="yfinance",
             bars=ordered,
-            corp_action_suspect=assessment.suspect,
-            corp_action_reasons=assessment.reasons,
+            corp_action_suspect=bool(reasons),
+            corp_action_reasons=reasons,
             adjustment="split_and_dividend",
             reconstructed=reconstructed,
             instrument_type=meta.get("instrumentType"),

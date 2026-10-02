@@ -1,11 +1,11 @@
-"""Filesystem roots. macOS is the product target."""
+"""Filesystem roots. The product directory is `~/.swing`."""
 
 from __future__ import annotations
 
-import os
-import sys
 from collections.abc import Mapping
 from pathlib import Path
+
+from swing.home import swing_home
 
 
 def default_data_dir(
@@ -13,24 +13,8 @@ def default_data_dir(
     home: Path | None = None,
     env: Mapping[str, str] | None = None,
 ) -> Path:
-    """Return the swing data root.
-
-    macOS: ~/Library/Application Support/swing
-    Other OS (CI and this agent's Linux VM): $XDG_DATA_HOME/swing or
-    ~/.local/share/swing. That fallback is not the supported daily-driver layout.
-    SWING_DATA_DIR overrides both.
-    """
-    environ = os.environ if env is None else env
-    override = environ.get("SWING_DATA_DIR")
-    if override:
-        return Path(override).expanduser()
-    system = sys.platform if platform is None else platform
-    root = Path.home() if home is None else home
-    if system == "darwin":
-        return root / "Library" / "Application Support" / "swing"
-    xdg = environ.get("XDG_DATA_HOME")
-    base = Path(xdg).expanduser() if xdg else root / ".local" / "share"
-    return base / "swing"
+    """Return the swing data root. See `swing.home.swing_home`."""
+    return swing_home(platform=platform, home=home, env=env)
 
 
 def bars_cache_dir(

@@ -134,6 +134,13 @@ class ChecklistBrain:
         else:
             gates["soft_veto"] = "pass"
 
+        if market is not None and market.earnings_disagree:
+            warnings.append(
+                Reason(
+                    code=ReasonCode.WARN_EARNINGS_DISAGREE,
+                    message="Finnhub and yfinance next report dates differ by more than 3 sessions. The earlier date is used.",
+                )
+            )
         if market is not None and market.instrument_type == "ETF":
             warnings.append(
                 Reason(
@@ -207,6 +214,11 @@ class ChecklistBrain:
 
 def _tradable_bars(market: MarketData | None) -> tuple[DailyBar, ...] | Reason:
     if market is None or market.bars is None or not market.bars.bars:
+        if market is not None and market.bars is None and market.errors:
+            return Reason(
+                code=ReasonCode.DATA_STALE,
+                message="No bar source published a final series. Massive failed and yfinance did not replace it.",
+            )
         return Reason(
             code=ReasonCode.NO_MARKET_DATA,
             message="No split-adjusted bars are loaded, so the checklist did not run.",
