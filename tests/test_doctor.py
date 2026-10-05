@@ -68,32 +68,14 @@ def test_doctor_names_the_home_and_the_fill_count(tmp_path: Path):
     assert "built-in stays 0.01" in text
 
 
-def test_universe_copy_states_the_floor_without_blocking(tmp_path: Path):
+def test_doctor_does_not_read_a_universe_file(tmp_path: Path):
     missing = render_findings(_run(tmp_path, {}))
-    assert "Floor is 20 names, target 30–50" in missing
-    assert "TICKER ETF" in missing
-    assert "SPY" in missing
-
-    short = tmp_path / "short"
-    short.mkdir()
-    (short / "universe.txt").write_text("AAPL\nMSFT\nUMMA ETF\n", encoding="utf-8")
-    thin = _run(short, {})
-    universe = next(item for item in thin if item.name == "universe")
-    assert universe.ok is True
-    text = render_findings(thin)
-    assert "Thin universe" in text
-    assert "3 tickers" in text
-
-    wide = tmp_path / "wide"
-    wide.mkdir()
-    names = "\n".join(f"N{i:02d}" for i in range(20)) + "\nSPY\n"
-    (wide / "universe.txt").write_text(names, encoding="utf-8")
-    listed = _run(wide, {})
-    found = next(item for item in listed if item.name == "universe")
-    assert found.ok is True
-    shown = render_findings(listed)
-    assert "Thin universe" not in shown
-    assert "SPY is listed" in shown
+    assert "universe" not in missing.lower()
+    assert "Floor is 20" not in missing
+    (tmp_path / "universe.txt").write_text("AAPL\nMSFT\nUMMA ETF\nSPY\n", encoding="utf-8")
+    again = render_findings(_run(tmp_path, {}))
+    assert again == missing
+    assert all(item.name != "universe" for item in _run(tmp_path, {}))
 
 
 def test_nested_clone_warning(tmp_path: Path):

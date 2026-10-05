@@ -30,8 +30,9 @@ def test_analyze_help_exits_zero(capsys):
     assert "Not financial advice" in out
     assert "--explain" in out
     assert "--json" in out
+    assert "--simple" in out
+    assert "--verbose" in out
     assert "--compact" not in out
-    assert "--simple" not in out
     assert "--sector" in out
 
 
@@ -58,30 +59,44 @@ def test_card_hides_gates_and_explain_shows_them(capsys, monkeypatch):
     code = main(["analyze", "AAPL"])
     assert code == 0
     card = capsys.readouterr().out
-    assert "NO_TRADE" in card
-    assert "NO_MARKET_DATA" in card
-    assert "config_hash" in card
-    assert "Not financial advice" in card
+    assert "NO TRADE" in card
+    assert "No split-adjusted bars" in card
+    assert "config_hash" not in card
+    assert "Not financial advice" not in card
     assert "data_auth:" not in card
 
     code = main(["analyze", "AAPL", "--explain"])
     assert code == 0
     explained = capsys.readouterr().out
-    assert "NO_MARKET_DATA" in explained
+    assert "No split-adjusted bars" in explained
     assert "  data_auth: no_trade" in explained
+    assert "config_hash" in explained
     assert "  liquidity: not_run" in explained
     assert explained.endswith(DISCLAIMER + "\n")
 
 
-def test_human_output_includes_disclaimer_and_hash(capsys, monkeypatch):
+def test_default_card_omits_the_hash_and_verbose_prints_them(capsys, monkeypatch):
     monkeypatch.delenv("SWING_CONFIG", raising=False)
     code = main(["analyze", "AAPL"])
     assert code == 0
     text = capsys.readouterr().out
-    assert "NO_TRADE" in text
-    assert "config_hash" in text
-    assert "Not financial advice" in text
+    assert "NO TRADE" in text
+    assert "config_hash" not in text
+    assert "Not financial advice" not in text
     assert "brain not run" not in text
+    code = main(["analyze", "AAPL", "--verbose"])
+    assert code == 0
+    verbose = capsys.readouterr().out
+    assert "config_hash" in verbose
+    assert "Not financial advice" in verbose
+
+
+def test_simple_prints_the_same_card_as_the_default(capsys, monkeypatch):
+    monkeypatch.delenv("SWING_CONFIG", raising=False)
+    assert main(["analyze", "AAPL"]) == 0
+    default = capsys.readouterr().out
+    assert main(["analyze", "AAPL", "--simple"]) == 0
+    assert capsys.readouterr().out == default
 
 
 def test_verbose_logs_do_not_pollute_json_stdout(capsys, monkeypatch):
@@ -172,11 +187,11 @@ def test_text_uses_the_configured_user_clock(tmp_path, capsys, monkeypatch):
     code = main(["analyze", "AAPL", "--config", str(path)])
     assert code == 0
     text = capsys.readouterr().out
-    assert "America/New_York 2026-10-05T09:30:00-04:00" in text
-    assert "Europe/London 2026-10-05T14:30:00+01:00" in text
+    assert "Next open Europe/London 2026-10-05T14:30:00+01:00" in text
+    assert "America/New_York" not in text
     assert "Africa/Cairo" not in text
     assert "brain not run" not in text
-    assert "Not financial advice" in text
+    assert "Not financial advice" not in text
 
 
 def test_bad_ticker_exits_2(capsys):

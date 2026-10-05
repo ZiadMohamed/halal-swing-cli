@@ -84,7 +84,7 @@ def test_cli_equity_sizes_without_changing_the_file_hash(
     assert payload["equity_usd"] == 10_000.0
     assert plan["equity_usd"] == 10_000.0
     assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
-    assert "equity=10000.0" in _run(["analyze", "AAPL", "--config", str(path), "--equity", "10000"])[1]
+    assert "10000.00 USD" in _run(["analyze", "AAPL", "--config", str(path), "--equity", "10000"])[1]
 
 
 def test_cli_equity_wins_over_toml_and_leaves_indicator_prices_alone(
@@ -143,8 +143,8 @@ def test_override_does_not_rescale_open_heat_and_still_blocks_at_one_percent(
     _code, text, _err = _run(
         ["analyze", "AAPL", "--config", str(path), "--equity", "10000", "--sector", "tech"]
     )
-    assert "HEAT_LIMIT" in text
-    assert "equity_usd 10000.0" in text
+    assert "Total heat would be" in text
+    assert "No buy price" in text
     assert journal.path.read_text(encoding="utf-8") == before
 
 

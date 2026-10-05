@@ -78,6 +78,7 @@ def analyze(
         plan=_stamp_earnings(_stamp_plan_equity(checklist.plan, effective_equity), earnings_date),
         market=market,
         equity_usd=effective_equity,
+        analysis=list(checklist.analysis),
     )
 
 
@@ -209,6 +210,7 @@ def _envelope(
     plan: Plan | None = None,
     market: MarketData | None = None,
     equity_usd: float | None = None,
+    analysis: list[str] | None = None,
 ) -> Envelope:
     return Envelope(
         ticker=ticker,
@@ -226,4 +228,5 @@ def _envelope(
         config_hash=config.config_hash(),
         gates=_gates_or_pending(gates),
         stage=_stage(_gates_or_pending(gates)),
+        analysis=list(analysis or ()),
     )

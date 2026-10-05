@@ -12,7 +12,7 @@
 #     The built-in below stays 0.01. Plans are not fills.
 # benchmark.symbol is "SPUS", or the screened core ETF you actually hold.
 # The live loader rejects that key. swing review still compares with SPUS.
-# Keep the core ETF out of universe.txt.
+# The core ETF stays outside this CLI. Do not analyze it unless you mean to swing it.
 #
 # Time-stops are intentionally absent. They were not locked.
 

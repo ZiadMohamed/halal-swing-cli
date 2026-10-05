@@ -34,17 +34,14 @@ def test_readme_records_the_satellite_operator_file():
     assert "20 closed real fills" in readme
     assert 'benchmark.symbol' in readme
     assert '"SPUS"' in readme
-    assert "out of `universe.txt`" in readme
+    assert "There is no `universe.txt`" in readme
     assert "plans.jsonl` only" in readme
     assert "book.jsonl" in readme
     analyze = (_ROOT / "src" / "swing" / "analyze.py").read_text(encoding="utf-8")
     assert "ChecklistBrain" in analyze
     assert "VARIANTS" not in analyze
     assert "does not rank" in readme
-    assert "at least 20 user-screened USD stocks" in readme
-    assert "30–50" in readme
-    assert "`TICKER ETF`" in readme
-    assert "SPY stays out of the file" in readme
+    assert "one ticker" in readme
     research = readme.split("## Research data", 1)[1].split("## Tests", 1)[0]
     assert "Sharadar Prices, full history" in research
     assert "(SEP)" in research

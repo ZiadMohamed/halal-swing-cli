@@ -22,7 +22,6 @@ Put `FINNHUB_API_KEY` and `MASSIVE_API_KEY` in `.env`. Doctor requires both free
 |---|---|
 | `config.toml` | Copy `config/swing.example.toml`. `equity_usd` is the satellite sleeve |
 | `.env` | Keys. Not committed. Mode `0600` |
-| `universe.txt` | At least 20 screened names, target 30–50. Tag ETF rows. Core ETF and SPY stay out |
 | `book.jsonl` | Buy and sell fills you record. Append-only. Plans are never imported here |
 | `plans.jsonl` | Plans from `analyze`, including a v0 journal import. Deduped |
 | `cache/bars/` | Daily bars |
@@ -34,17 +33,15 @@ The live checklist stays on v0. Built-in `SwingConfig` numbers are unchanged. `~
 - `account.equity_usd` is the satellite sleeve in USD, not total net worth. Start near 20% of total USD equity. The other 80% stays in a screened USD equity ETF held outside this CLI. The plan's examples are SPUS and HLAL. This program does not rank them.
 - `risk.per_trade` in code stays `0.01`. In the operator file, set `0.005` until `book.jsonl` has 20 closed real fills, then set it back to `0.01`. Plans are not fills. Change the file by hand. There is no automatic ratchet. Twenty closes are a process check, not proof of an edge.
 - `benchmark.symbol` is `"SPUS"`, or the screened core ETF you actually hold, so a later review can compare the sleeve with that core. The live loader does not accept `benchmark.symbol` yet. `swing review` still compares with SPUS. Do not add that key to `config.toml` until the loader accepts it.
-- Keep the core ETF out of `universe.txt`. The CLI manages the satellite only.
+- The core ETF stays outside this CLI. The CLI manages the satellite only.
 - A v0 `journal.jsonl` is archived and imported into `plans.jsonl` only. Nothing from that file is written into `book.jsonl`. A real fill is a manual `swing buy` after you confirm the shares, price, and date.
 - `account.mode` stays `"cash"`. Size from settled cash, not buying power. You type the orders. This program does not send them. The recorded pricing choice for this book's order size is IBKR Pro Tiered. Re-read the schedule in the account portal before relying on it.
 
-## Universe
+## Tickers
 
-`~/.swing/universe.txt` should hold at least 20 user-screened USD stocks. The working target is 30–50. One name per line. Tag an ETF only when you have already screened it, as `TICKER ETF`. The live earnings skip still uses vendor instrument type. Analyze does not read that tag yet.
+There is no `universe.txt`. `swing analyze` takes the one ticker you type. It does not read a list, and doctor does not look for one. This program does not rank a list of tickers. A ranked scan was described in the redesign notes and was never wired, so the file had nothing to feed.
 
-Keep the core ETF out of the file so the CLI does not swing the core. SPY stays out of the file. It is a timing series, not a holding.
-
-Below 20 names, a scan may still run. Doctor labels that list a thin universe. The live checklist has no hard block on the count. Names that fail a later liquidity floor are skipped with a reason. Count names that pass, not only lines in the file. See [docs/decisions/SECTION8_ANSWERS.md](docs/decisions/SECTION8_ANSWERS.md).
+You still supply the screened ticker yourself. Pass the core ETF only when you mean to swing it. SPY is not a holding.
 
 ## v1 config surface (not wired)
 
@@ -77,12 +74,12 @@ An old `~/Library/Application Support/swing` folder is copied once and left in p
 US cash session is 16:30–23:00 Cairo for most of the year, and 15:30–22:00 when only one country is on daylight time.
 
 1. After about 08:00 Cairo, `swing today` lists exits due and open lots.
-2. `swing analyze TICKER --equity USD` prints the card. `--explain` adds the gates. `--json` prints the envelope.
+2. `swing analyze TICKER --equity USD` prints three short sections: BUY or NO TRADE and the one reason, the prices in cents, and the readings behind them. The next open is one line in your timezone (Cairo unless you change it). `--simple` prints that same card. `--explain` adds the gates and the longer buy and sell sentences. `--verbose` adds the config hash and the product note. `--json` prints the full envelope, including the hash and the note.
 3. Type the ticket in Interactive Brokers before the open. The CLI does not send it.
 4. After the fill, `swing buy TICKER --shares N --price P`. On the way out, `swing sell TICKER --shares N --price P --reason stop|trail|earnings|manual`.
 5. Weekly, `swing review` and `swing review --plans`. The book is **unproven** until mean R − 2·SE is above 0 after 100 closed trades.
 
-`swing doctor` requires `FINNHUB_API_KEY` and `MASSIVE_API_KEY`, and it checks the universe file, SPY freshness, and the book. A missing Massive key does not block a fresh yfinance bar. The built-in bars provider stays `yfinance`.
+`swing doctor` requires `FINNHUB_API_KEY` and `MASSIVE_API_KEY`, and it checks SPY freshness and the book. It does not look for a ticker list. A missing Massive key does not block a fresh yfinance bar. The built-in bars provider stays `yfinance`.
 
 ## How to use the plan (manual IBKR)
 
@@ -90,7 +87,7 @@ Money is USD. There is no FX conversion.
 
 An `ENTER_LONG` stamp of `checklist_only` means the predetermined rules matched.
 
-**When to buy.** The card names the setup (`BO_RVOL`, then `PB_EMA`, then `RSI2_MR`). The fill is the next NYSE open. The planned entry is the signal close. You type the cash long in Interactive Brokers. This CLI does not send the order.
+**When to buy.** The card says BUY and names the setup (`BO_RVOL`, then `PB_EMA`, then `RSI2_MR`). The fill is the next NYSE open. The planned entry is the signal close, shown in cents. You type the cash long in Interactive Brokers. This CLI does not send the order.
 
 **When to sell.** v0 exits at the stop or the 2R target. Time-stops are not in v0. An SMA(5) exit is not in v0. You type the exit in Interactive Brokers yourself.
 

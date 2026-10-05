@@ -67,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
             render_text(
                 envelope,
                 explain=bool(args.explain),
+                verbose=bool(args.verbose),
                 user_tz=config.timezone.user,
                 market_tz=config.timezone.market,
                 config=config,
@@ -124,7 +125,19 @@ def _parser() -> argparse.ArgumentParser:
         metavar="YYYY-MM-DD",
         help="Use this report date for this run when the calendars are missing or wrong. Stamped on the plan.",
     )
-    analyze_parser.add_argument("--verbose", action="store_true", help="Log to stderr. Stdout stays clean for --json.")
+    analyze_parser.add_argument(
+        "--simple",
+        action="store_true",
+        help="Print the short card. This is already the default. Ignored when --json is set.",
+    )
+    analyze_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help=(
+            "Log to stderr, and on the text card print the config hash and the product note. "
+            "Stdout stays clean for --json."
+        ),
+    )
     backtest = sub.add_parser("backtest", help="Run one pre-registered variant on cached bars")
     backtest.add_argument("--variant", default="D2", help="Appendix A name: A, B, C, M, D2, I, J, K, L, H, E, G, I_moo, I_cap")
     backtest.add_argument("--from", dest="start", default="2021-01-04")
@@ -151,7 +164,7 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "doctor",
         help=(
-            "Require FINNHUB_API_KEY and MASSIVE_API_KEY. Check ~/.swing, the universe, "
+            "Require FINNHUB_API_KEY and MASSIVE_API_KEY. Check ~/.swing, "
             "SPY freshness, and the book. May call vendors. Does not send orders. "
             "Bars stay on yfinance until SWING_BARS_PROVIDER=massive."
         ),
@@ -294,9 +307,6 @@ def _portfolio(args) -> int:
         for lot in due:
             print(f"  MOC {lot.ticker} {lot.shares} shares  exit_by {lot.exit_by}")
         _print_positions(lots, events)
-        universe = root / "universe.txt"
-        if not universe.is_file():
-            print(f"No universe file at {universe}. Ranked entries need that list.")
         return 0
     trades = closed_trades(events)
     summary = review_summary(trades)

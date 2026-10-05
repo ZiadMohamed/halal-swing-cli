@@ -18,3 +18,4 @@ class ChecklistResult:
     side: Literal["long"] | None
     plan: Plan | None
     gates: tuple[GateView, ...]
+    analysis: tuple[str, ...] = ()

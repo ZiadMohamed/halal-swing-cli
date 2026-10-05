@@ -88,13 +88,13 @@ def test_enter_long_prints_the_plan_and_summer_clocks_without_journaling(
     for _ in range(5):
         code, text, _err = _run(["analyze", "AAPL", "--config", str(config)])
         assert code == 0
-        assert "AAPL  ENTER_LONG" in text
-    assert f"next_open America/New_York {NY_SUMMER}" in text
-    assert f"next_open Africa/Cairo {CAIRO_SUMMER}" in text
-    assert "plan setup=" in text
-    assert "config_hash" in text
+        assert "AAPL  BUY" in text
+    assert "America/New_York" not in text
+    assert f"Next open Africa/Cairo {CAIRO_SUMMER}" in text
+    assert "Volume breakout matched" in text
+    assert "config_hash" not in text
     assert "data_auth:" not in text
-    assert text.rstrip("\n").endswith(DISCLAIMER)
+    assert not text.rstrip("\n").endswith(DISCLAIMER)
     assert not path.exists()
 
 
@@ -102,9 +102,9 @@ def test_winter_open_prints_new_york_and_cairo_standard_offsets(tmp_path: Path, 
     install_market(monkeypatch, next_open=WINTER_OPEN)
     code, text, _err = _run(["analyze", "AAPL", "--config", str(_equity_config(tmp_path))])
     assert code == 0
-    assert "ENTER_LONG" in text
-    assert f"next_open America/New_York {NY_WINTER}" in text
-    assert f"next_open Africa/Cairo {CAIRO_WINTER}" in text
+    assert "BUY" in text
+    assert "America/New_York" not in text
+    assert f"Next open Africa/Cairo {CAIRO_WINTER}" in text
     assert "+03:00" not in text
 
 
@@ -116,16 +116,16 @@ def test_no_trade_and_block_do_not_append(tmp_path: Path, monkeypatch: pytest.Mo
     )
     code, text, _err = _run(["analyze", "AAPL", "--config", str(_equity_config(tmp_path))])
     assert code == 0
-    assert "NO_TRADE" in text
-    assert "EARNINGS_BLACKOUT" in text
+    assert "NO TRADE" in text
+    assert "blackout" in text
     assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
     unset = _config(tmp_path, "")
     install_market(monkeypatch, next_open=SUMMER_OPEN)
     code, text, _err = _run(["analyze", "AAPL", "--config", str(unset)])
     assert code == 0
-    assert "AAPL  NO_TRADE" in text
-    assert "EQUITY_UNSET" in text
+    assert "AAPL  NO TRADE" in text
+    assert "equity_usd is unset" in text
     assert not (tmp_path / "swing-data" / "journal.jsonl").exists()
 
     blocked = _config(tmp_path, '[account]\nmode = "margin"\n')

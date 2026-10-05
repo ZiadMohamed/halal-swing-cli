@@ -115,6 +115,7 @@ class Envelope(_Strict):
     config_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     gates: list[GateView]
     stage: Literal["skeleton", "partial", "checklist"] = "skeleton"
+    analysis: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _enter_rules(self) -> Envelope:

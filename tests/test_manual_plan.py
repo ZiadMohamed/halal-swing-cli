@@ -42,22 +42,22 @@ def test_card_states_the_plan_in_usd(_offline: Path):
     code, text, err = _run(["analyze", "AAPL", "--config", str(_offline), "--equity", "10000"])
     assert code == 0
     assert err == ""
-    assert "AAPL  ENTER_LONG" in text
-    assert "config_hash" in text
-    assert text.rstrip("\n").endswith(DISCLAIMER)
-    plan = _plan_numbers(text)
-    assert plan["setup"] == "BO_RVOL"
+    assert "AAPL  BUY" in text
+    assert "config_hash" not in text
+    assert not text.rstrip("\n").endswith(DISCLAIMER)
     assert "USD" in text
     assert "EUR" not in text
     assert "GBP" not in text
-    assert f"equity={plan['equity']} USD" in text or "10000.0" in text
-    assert SUMMER_OPEN in text
-    buy = next(line for line in text.splitlines() if line.startswith("Buy:"))
-    sell = next(line for line in text.splitlines() if line.startswith("Sell:"))
-    assert plan["size"] in buy
-    assert plan["entry"] in buy
-    assert plan["stop"] in sell
-    assert plan["target"] in sell
+    assert "Volume breakout matched" in text
+    buy = next(line for line in text.splitlines() if line.startswith("Buy "))
+    stop = next(line for line in text.splitlines() if line.startswith("Stop "))
+    profit = next(line for line in text.splitlines() if line.startswith("Profit "))
+    shares = next(line for line in text.splitlines() if line.endswith("USD.") and "shares" in line)
+    assert "10000.00 USD" in text
+    assert buy.split()[1] in text
+    assert stop.split()[1] in stop
+    assert profit.split()[1] in profit
+    assert "shares" in shares
     assert "does not send" in text
     assert "When to buy:" not in text
 
@@ -70,9 +70,10 @@ def test_explain_is_longer_and_names_the_gates(_offline: Path):
     assert "When to buy:" in explained
     assert "When to sell:" in explained
     assert "  setup_mutex: pass" in explained
+    assert "config_hash" in explained
     assert explained.rstrip("\n").endswith(DISCLAIMER)
     assert len(explained) > len(card)
-    assert _plan_numbers(explained) == _plan_numbers(card)
+    assert _price_block(explained) == _price_block(card)
 
 
 def test_json_adds_buy_and_sell_and_keeps_the_file_hash(_offline: Path):
@@ -103,11 +104,11 @@ def test_no_trade_does_not_print_buy_or_sell_instructions(_offline: Path):
     code, text, err = _run(["analyze", "AAPL", "--config", str(_offline)])
     assert code == 0
     assert err == ""
-    assert "NO_TRADE" in text
-    assert "EQUITY_UNSET" in text
+    assert "NO TRADE" in text
+    assert "equity_usd is unset" in text
     assert "When to buy:" not in text
     assert "When to sell:" not in text
-    assert "Buy:" not in text
+    assert "Buy " not in text
     assert "Sell:" not in text
     _code, raw, _err = _run(["analyze", "AAPL", "--config", str(_offline), "--json"])
     payload = json.loads(raw)
@@ -164,11 +165,11 @@ def test_pb_and_rsi2_cards_name_the_setup_and_the_prices():
             }
         )
     )
-    assert "setup=PB_EMA" in pb
-    assert "entry=50.0" in pb
-    assert "stop=48.0" in pb
-    assert "target=54.0" in pb
-    assert "size=8" in pb
+    assert "Pullback matched" in pb
+    assert "Buy 50.00 USD" in pb
+    assert "Stop 48.00 USD" in pb
+    assert "Profit 54.00 USD" in pb
+    assert "8 shares" in pb
     assert "sell at SMA(5)" not in pb.lower()
 
     rsi = render_text(
@@ -185,11 +186,11 @@ def test_pb_and_rsi2_cards_name_the_setup_and_the_prices():
             }
         )
     )
-    assert "setup=RSI2_MR" in rsi
-    assert "size=3" in rsi
-    assert "entry=10.0" in rsi
-    assert "stop=9.0" in rsi
-    assert "target=12.0" in rsi
+    assert "Two-day dip matched" in rsi
+    assert "3 shares" in rsi
+    assert "Buy 10.00 USD" in rsi
+    assert "Stop 9.00 USD" in rsi
+    assert "Profit 12.00 USD" in rsi
 
 
 def test_signal_wording_follows_the_config_periods_without_touching_the_hash(
@@ -227,12 +228,8 @@ def test_signal_wording_follows_the_config_periods_without_touching_the_hash(
     assert Envelope.model_fields["schema_version"].default == "2.0.0"
 
 
-def _plan_numbers(text: str) -> dict[str, str]:
-    line = next(item for item in text.splitlines() if item.startswith("plan "))
-    fields = {}
-    for token in line.split():
-        if "=" not in token:
-            continue
-        key, value = token.split("=", 1)
-        fields[key] = value.removesuffix("USD").strip()
-    return fields
+def _price_block(text: str) -> list[str]:
+    lines = text.splitlines()
+    start = lines.index("Prices") + 1
+    end = lines.index("Technical")
+    return lines[start:end]

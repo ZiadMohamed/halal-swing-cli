@@ -2,18 +2,18 @@
 
 Personal cash-long CLI. Not financial advice. Not a Shariah certification. Not a broker.
 
-The screened universe is `~/.swing/universe.txt`: at least 20 names, target 30–50, ETF rows tagged `ETF`, and SPY kept out of the file. The CLI never places, routes, or stages an order. The live checklist does not block a short list.
+There is no `universe.txt`. `swing analyze` takes the one ticker you type. Older notes describe a ranked scan over a screened list; that command was never wired, so the file is not read. The CLI never places, routes, or stages an order.
 
 ## Commands
 
 | Command | Role |
 |---|---|
-| `swing analyze TICKER` | One ticker. Card by default, `--explain` for gates, `--json` for the envelope |
+| `swing analyze TICKER` | One ticker. Short card by default, `--simple` is the same card, `--explain` for gates, `--verbose` for the hash and the note, `--json` for the envelope |
 | `swing buy` / `swing sell` | Append a fill to `book.jsonl` |
 | `swing positions` / `swing today` | Open lots, exits due, settled-cash figure |
 | `swing review` | Closed-trade R and an unproven label. `--plans` scores cached plans |
 | `swing backtest` | Pre-registered variants on a parquet cache. No parameter search |
-| `swing doctor` | Keys, paths, SPY freshness, book integrity |
+| `swing doctor` | Keys, paths, SPY freshness, book integrity. No ticker list |
 
 Decisions are `ENTER_LONG` and `NO_TRADE`. `account.mode` is `cash` only.
 
@@ -35,7 +35,7 @@ src/swing/
 
 ## Data
 
-Bars: Massive grouped daily for the universe, a throttled per-ticker backfill (5 calls a minute), then yfinance, then `DATA_STALE`. Splits are one list per day. A move of 40% or more without a listed split is `DATA_SUSPECT` via `unexplained_gap`.
+Bars: Massive grouped daily when that provider is selected, a throttled per-ticker backfill (5 calls a minute), then yfinance, then `DATA_STALE`. Splits are one list per day. A move of 40% or more without a listed split is `DATA_SUSPECT` via `unexplained_gap`. `load_universe` is a batch fetch for a ticker list the caller passes. Nothing reads `universe.txt`.
 
 Earnings: Finnhub `/calendar/earnings` and the yfinance calendar. The earlier next date wins. More than three sessions of disagreement is `WARN_EARNINGS_DISAGREE`. `--earnings-date` overrides one run and is stamped on the plan. An empty list is not a clear calendar unless Finnhub returned that full window. ETFs skip the earnings gate.
 

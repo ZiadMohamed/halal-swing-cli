@@ -37,6 +37,7 @@ from swing.brain.gates import PIPELINE_GATES
 from swing.brain.indicators import atr
 from swing.brain.positions import OpenPosition
 from swing.brain.result import ChecklistResult
+from swing.brain.explain import describe_setups, earnings_note, unchecked_setups
 from swing.brain.setups import (
     SuspectSeries,
     bo_rvol_signal,
@@ -81,6 +82,7 @@ class ChecklistBrain:
         book = tuple(positions)
         gates: dict[str, str] = {}
         warnings: list[Reason] = []
+        notes: list[str] = list(unchecked_setups())
 
         def finish(
             decision: DecisionKind,
@@ -97,6 +99,7 @@ class ChecklistBrain:
                 side="long" if entering else None,
                 plan=plan,
                 gates=tuple(GateView(name=name, status=gates.get(name, "not_run")) for name in PIPELINE_GATES),
+                analysis=tuple(notes),
             )
 
         def halt(gate: str, status: str, code: ReasonCode, message: str) -> ChecklistResult:
@@ -108,6 +111,9 @@ class ChecklistBrain:
             gates["data_auth"] = "no_trade"
             return finish(DecisionKind.NO_TRADE, (bars,))
         gates["data_auth"] = "pass"
+        entry_day = _entry_day(market.next_open) if market is not None else None
+        notes[:] = describe_setups(bars, config)
+        notes.append(earnings_note(self._calendar, config, market, entry_day))
         if market is not None and market.bars is not None and market.bars.reconstructed:
             warnings.append(
                 Reason(
@@ -124,7 +130,6 @@ class ChecklistBrain:
             return halt("liquidity", "no_trade", ReasonCode.ILLIQUID, liquidity)
         gates["liquidity"] = "pass"
 
-        entry_day = _entry_day(market.next_open) if market is not None else None
         exdiv = _exdiv_decision(config, market, bars, entry_day)
         if exdiv is not None and exdiv[0] == "block":
             return halt("soft_veto", "block", ReasonCode.EXDIV_BLOCK, exdiv[1])
