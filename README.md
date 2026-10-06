@@ -1,8 +1,32 @@
 # halal-swing-cli
 
-Personal cash-long checklist for US equities and ETFs. You type the orders in Interactive Brokers. This program does not send them.
+This is a personal checklist for cash, long-only trades in US stocks and stock funds, in dollars. A long-only trade means you buy shares. You do not borrow shares to bet on a fall. You type the orders into Interactive Brokers yourself. The program never sends an order.
 
-**Not financial advice. Not a Shariah certification.** You supply the screened tickers. `confidence` stays `checklist_only`. That means the rules matched. It is not a claim of edge.
+You already chose the ticker. The program does not decide whether a company is acceptable to you. It answers a narrower question: given the daily prices, do today's rules say buy, and if so at what stop, profit price, and share count?
+
+Use the card as one input to your own decision. It is not an autopilot. If the cash is not there, do not type the buy.
+
+## How a decision is made
+
+1. Load the daily prices for the ticker you typed. The last bar has to be the last finished New York session. A bar with a missing price is dropped.
+2. Skip the trade when the next open sits in the earnings window: two sessions before the company report through one session after. A report can jump the price past any stop. A fund has no report, so this check does not apply to it.
+3. Look for one of three patterns, in this order. The first match is the name on the card. All three use the same stop and the same profit price.
+   - **Volume breakout.** The close (the last price of the day) is above the 50-day average and above the highest high of the prior 20 sessions, and today's volume is at least 1.5 times the average volume of those 20 sessions.
+   - **Pullback.** The close is still above the 50-day smoothed line. A smoothed line is an average that weighs recent days more than old days. The day's low tags the 20-day smoothed line, and the close finishes back above it.
+   - **Two-day dip.** The close is above the 200-day average, and RSI(2) is below 10. RSI(2) is a 0–100 score of the last two days. A low number means those closes were down days.
+4. The stop is 1.5 times the average daily range below the close. The average daily range, ATR(14), is how far the price typically travels in one day, including the overnight gap, smoothed over 14 sessions. The profit price is twice that distance above the close. Twice that distance is called 2R. One R is the distance from the buy to the stop. The share count risks about 1% of the sleeve to that stop, rounded down. The sleeve is the dollars you pass with `--equity` or set in the config. It is the money this checklist manages, not your whole account.
+
+## What it is good at
+
+The card is one decision: buy or no trade, the prices in cents, the share count, the dollars at risk, and the readings behind them. The stop is in that stock's own daily movement, not a percent copied from a different stock. A stop-out is sized at about 1% of the sleeve. The days around a company report are blocked. You still type every order.
+
+## What it is bad at
+
+The three patterns are easy to see on a chart. They are not an edge on their own. In this repo's backtest, with the same stop and the same 2R profit price, the patterns made **+0.133R** a trade. Buying on a random day made **+0.164R**. A random day while the close was above the 200-day average made **+0.142R**. That test is Appendix A of the redesign plan, and it is repeated in [docs/decisions/ALGO_REVIEW_2026-10.md](docs/decisions/ALGO_REVIEW_2026-10.md).
+
+A later book, v1, ranked the names, trailed the stop instead of capping the winner at 2R, and limited each name to 20% of the sleeve. It grew faster than v0 in both test windows (about 13.7% a year versus −9.9% in 2021–2026, and 12.7% versus 5.9% in 2014–2026). It failed the ship rule. In the longer window, ranking those same signals at random had the calmer path: Sharpe 0.95 versus 0.90. Sharpe is yearly growth divided by how bumpy the path was. The live rules stayed on v0. The review has the sources and the numbers.
+
+The share count does not look at cash already tied up. In that backtest the typical buy was about a third of the sleeve, so several buys do not fit in a cash account. The 2R profit price also cuts off the rare very large winner. Published long-only trend tests make their money on those winners, and they hold for months, not days. This checklist does not.
 
 ## Install
 

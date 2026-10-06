@@ -145,7 +145,9 @@ def test_readme_documents_usd_manual_ibkr_and_buy_sell():
     assert "not in v0" in section
     assert "SMA(5)" in section
     assert "checklist_only" in section
-    assert "Not financial advice" in readme
+    assert "not an autopilot" in readme
+    assert "+0.133R" in readme
+    assert "+0.164R" in readme
     assert "EUR" not in readme
     assert "GBP" not in readme
 
