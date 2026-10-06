@@ -13,7 +13,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from swing.data.bars import drop_invalid
+from swing.data.bars import drop_invalid, unexplained_moves
 from swing.data.calendar import NyseCalendar
 from swing.data.models import BarSeries, DailyBar
 
@@ -74,7 +74,16 @@ def read_bars(cache_dir: Path, ticker: str) -> BarSeries | None:
             sessions, opens, highs, lows, closes, volumes, raws, strict=True
         )
     )
-    reasons = tuple(part for part in meta.get(b"corp_action_reasons", b"").decode().split(",") if part)
+    stored_reasons = tuple(part for part in meta.get(b"corp_action_reasons", b"").decode().split(",") if part)
+    # A fresh rule can clear a stale unexplained_gap. The split list is not in
+    # the file; adjusted closes only still jump when the gap was a real one.
+    if "unexplained_gap" in stored_reasons:
+        fresh_gap = unexplained_moves(bars, ())
+        reasons = tuple(part for part in stored_reasons if part != "unexplained_gap") + fresh_gap
+        suspect = bool(reasons)
+    else:
+        reasons = stored_reasons
+        suspect = meta.get(b"corp_action_suspect", b"false") == b"true"
     adjustment = meta.get(b"adjustment", b"split").decode()
     if adjustment not in {"split", "split_and_dividend"}:
         adjustment = "split"
@@ -83,7 +92,7 @@ def read_bars(cache_dir: Path, ticker: str) -> BarSeries | None:
         ticker=meta.get(b"ticker", ticker.encode()).decode(),
         provider=meta.get(b"provider", b"cache").decode(),
         bars=bars,
-        corp_action_suspect=meta.get(b"corp_action_suspect", b"false") == b"true",
+        corp_action_suspect=suspect,
         corp_action_reasons=reasons,
         adjustment=adjustment,  # type: ignore[arg-type]
         instrument_type=instrument,

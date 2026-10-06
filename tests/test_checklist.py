@@ -204,9 +204,30 @@ def test_suspect_series_does_not_run_indicators():
     assert result.confidence is None
     assert result.reasons[0].code is ReasonCode.CORP_ACTION_SUSPECT
     assert "missing_split" in result.reasons[0].message
+    assert "Prices loaded" in result.reasons[0].message
+    assert all("No usable daily prices" not in line for line in result.analysis)
+    assert result.analysis[0].startswith("Breakout: not checked.")
     assert _gate(result, "data_auth") == "no_trade"
     assert _gate(result, "liquidity") == "not_run"
     assert _gate(result, "setup_mutex") == "not_run"
+
+
+def test_split_shaped_gap_names_the_two_closes():
+    bars = _series([100.0, 50.0], SIGNAL_DAY)
+    result = ChecklistBrain().evaluate(
+        "AAPL",
+        _config(),
+        _market(bars, suspect=True, reasons=("unexplained_gap",)),
+    )
+    message = result.reasons[0].message
+    assert result.reasons[0].code is ReasonCode.CORP_ACTION_SUSPECT
+    assert "100.00" in message
+    assert "50.00" in message
+    assert "2-for-1" in message
+    assert "Prices loaded" in message
+    assert all("No usable daily prices" not in line for line in result.analysis)
+    joined = " ".join(result.analysis)
+    assert "did load" in joined
 
 
 def test_missing_market_data_is_no_trade():

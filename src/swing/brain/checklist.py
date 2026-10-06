@@ -37,7 +37,8 @@ from swing.brain.gates import PIPELINE_GATES
 from swing.brain.indicators import atr
 from swing.brain.positions import OpenPosition
 from swing.brain.result import ChecklistResult
-from swing.brain.explain import describe_setups, earnings_note, unchecked_setups
+from swing.brain.explain import describe_setups, earnings_note, refused_setups, unchecked_setups
+from swing.data.bars import first_split_gap
 from swing.brain.setups import (
     SuspectSeries,
     bo_rvol_signal,
@@ -49,7 +50,7 @@ from swing.brain.setups import (
 from swing.codes import DecisionKind, ReasonCode
 from swing.config import SwingConfig
 from swing.data.calendar import NyseCalendar
-from swing.data.models import DailyBar, MarketData
+from swing.data.models import BarSeries, DailyBar, MarketData
 from swing.envelope import GateView, Plan, Reason
 
 _NY = ZoneInfo("America/New_York")
@@ -108,6 +109,8 @@ class ChecklistBrain:
 
         bars = _tradable_bars(market)
         if isinstance(bars, Reason):
+            if bars.code is ReasonCode.CORP_ACTION_SUSPECT and market is not None and market.bars is not None:
+                notes[:] = list(refused_setups(_suspect_short(market.bars)))
             gates["data_auth"] = "no_trade"
             return finish(DecisionKind.NO_TRADE, (bars,))
         gates["data_auth"] = "pass"
@@ -217,6 +220,44 @@ class ChecklistBrain:
         return finish(DecisionKind.ENTER_LONG, plan=plan)
 
 
+def _suspect_message(series: BarSeries) -> str:
+    """Plain reason when prices loaded but a missed split is suspected."""
+    gap = first_split_gap(series.bars, ()) if "unexplained_gap" in series.corp_action_reasons else None
+    if gap is not None:
+        session, previous, close, factor = gap
+        move = abs(close / previous - 1.0)
+        return (
+            f"Prices loaded. On {session.isoformat()} the close went from {previous:.2f} to {close:.2f} "
+            f"({move:.0%} move). That lines up with a {_split_words(factor)} split, and no split is listed "
+            f"for that day. A split turns each share into more shares, or fewer, and the price jumps by the "
+            f"same amount so the company is still worth the same. If the file missed one, the averages would "
+            f"be meaningless, so the setups were not checked."
+        )
+    count = len(series.bars)
+    last = f"{series.bars[-1].close:.2f}" if series.bars else "none"
+    reasons = ", ".join(series.corp_action_reasons) or "unspecified"
+    return (
+        f"Prices loaded ({count} sessions, last close {last}). "
+        f"They were refused ({reasons}), so the setups were not checked."
+    )
+
+
+def _suspect_short(series: BarSeries) -> str:
+    if "unexplained_gap" in series.corp_action_reasons and first_split_gap(series.bars, ()) is not None:
+        return "The daily prices did load, but one day looks like a share split the file did not record."
+    return "The daily prices did load, but they were refused before the setups ran."
+
+
+def _split_words(factor: float) -> str:
+    """`0.5` is a 2-for-1. `2` is a 1-for-2."""
+    shares = 1.0 / factor
+    for old in range(1, 11):
+        new = shares * old
+        if abs(new - round(new)) <= 0.05 and 1 <= round(new) <= 20:
+            return f"{int(round(new))}-for-{old}"
+    return f"{factor:.2f}-times"
+
+
 def _tradable_bars(market: MarketData | None) -> tuple[DailyBar, ...] | Reason:
     if market is None or market.bars is None or not market.bars.bars:
         if market is not None and market.bars is None and market.errors:
@@ -230,8 +271,8 @@ def _tradable_bars(market: MarketData | None) -> tuple[DailyBar, ...] | Reason:
         )
     try:
         refuse_suspect(market.bars)
-    except SuspectSeries as exc:
-        return Reason(code=ReasonCode.CORP_ACTION_SUSPECT, message=str(exc))
+    except SuspectSeries:
+        return Reason(code=ReasonCode.CORP_ACTION_SUSPECT, message=_suspect_message(market.bars))
     signal = market.bars.bars[-1]
     prices = (signal.open, signal.high, signal.low, signal.close)
     if any(not math.isfinite(price) or price <= 0 for price in prices):

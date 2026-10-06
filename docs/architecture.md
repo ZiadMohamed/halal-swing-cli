@@ -35,7 +35,7 @@ src/swing/
 
 ## Data
 
-Bars: Massive grouped daily when that provider is selected, a throttled per-ticker backfill (5 calls a minute), then yfinance, then `DATA_STALE`. Splits are one list per day. A move of 40% or more without a listed split is `DATA_SUSPECT` via `unexplained_gap`. `load_universe` is a batch fetch for a ticker list the caller passes. Nothing reads `universe.txt`.
+Bars: Massive grouped daily when that provider is selected, a throttled per-ticker backfill (5 calls a minute), then yfinance, then `DATA_STALE`. Splits are one list per day. A one-day jump is `unexplained_gap` only when it is at least 40% and close to a whole-share split ratio (a halving, a doubling, a 5-for-2), and that session is not on the split list. A large trading day that is not a split ratio is kept. `load_universe` is a batch fetch for a ticker list the caller passes. Nothing reads `universe.txt`.
 
 Earnings: Finnhub `/calendar/earnings` and the yfinance calendar. The earlier next date wins. More than three sessions of disagreement is `WARN_EARNINGS_DISAGREE`. `--earnings-date` overrides one run and is stamped on the plan. An empty list is not a clear calendar unless Finnhub returned that full window. ETFs skip the earnings gate.
 

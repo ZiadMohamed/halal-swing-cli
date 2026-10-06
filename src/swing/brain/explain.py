@@ -23,6 +23,15 @@ def unchecked_setups() -> tuple[str, ...]:
     )
 
 
+def refused_setups(reason: str) -> tuple[str, ...]:
+    """Setups were not run, and the prices did load."""
+    return (
+        f"Breakout: not checked. {reason}",
+        "Pullback: not checked. Same reason as the breakout.",
+        "Two-day dip: not checked. Same reason as the breakout.",
+    )
+
+
 def describe_setups(bars: Sequence[DailyBar], config: SwingConfig) -> list[str]:
     return [
         _breakout(bars, config),

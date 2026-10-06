@@ -66,3 +66,49 @@ def test_cache_file_is_under_the_macos_bars_cache_dir(tmp_path: Path):
 
 def test_missing_cache_returns_none(tmp_path: Path):
     assert read_bars(tmp_path, "AAPL") is None
+
+
+def _jump(close_a: float, close_b: float, reason: str) -> BarSeries:
+    return BarSeries(
+        ticker="CRWV",
+        provider="yfinance",
+        bars=(
+            DailyBar(
+                session=date(2025, 3, 31),
+                open=close_a,
+                high=close_a,
+                low=close_a,
+                close=close_a,
+                volume=1.0,
+                raw_close=close_a,
+            ),
+            DailyBar(
+                session=date(2025, 4, 1),
+                open=close_b,
+                high=close_b,
+                low=close_b,
+                close=close_b,
+                volume=1.0,
+                raw_close=close_b,
+            ),
+        ),
+        corp_action_suspect=True,
+        corp_action_reasons=(reason,),
+        adjustment="split_and_dividend",
+    )
+
+
+def test_stale_unexplained_gap_clears_when_the_jump_is_not_a_split(tmp_path: Path):
+    write_bars(tmp_path, _jump(37.08, 52.57, "unexplained_gap"))
+    loaded = read_bars(tmp_path, "CRWV")
+    assert loaded is not None
+    assert loaded.corp_action_suspect is False
+    assert loaded.corp_action_reasons == ()
+
+
+def test_stale_unexplained_gap_stays_when_the_jump_is_a_split(tmp_path: Path):
+    write_bars(tmp_path, _jump(100.0, 50.0, "unexplained_gap"))
+    loaded = read_bars(tmp_path, "CRWV")
+    assert loaded is not None
+    assert loaded.corp_action_suspect is True
+    assert loaded.corp_action_reasons == ("unexplained_gap",)
